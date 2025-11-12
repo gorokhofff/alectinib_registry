@@ -1,0 +1,452 @@
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -500,7 +500,7 @@
+                 {renderSelect('maximum_response', 'response', 'Максимальный ответ')}
+                 
+                 <DateValidation
+-                  name="earliest_response_date"
+-                  label="Дата наиболее раннего ответа"
++                  name="maximum_response_date"
++                  label="Дата достижения наибольшего ответа"
+                   value={formData.earliest_response_date}
+                   onChange={handleChange}
+                   tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -520,7 +520,7 @@
+-                <DateValidation
+-                  name="earliest_response_date"
+-                  label="Дата наиболее раннего ответа"
+-                  value={formData.earliest_response_date}
+-                  onChange={handleChange}
+-                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-                />
++                <DateValidation
++                  name="earliest_response_date"
++                  label="Дата достижения наибольшего ответа"
++                  value={formData.earliest_response_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />
+
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -150,10 +150,30 @@
+-  const renderMultiSelect = (name, category, label) => {
+-    const options = dictionaries[category] || []
+-    const selected = formData[name] || []
+-    
+-    return (
+-      <div className="form-group">
+-        <label className="form-label">{label}</label>
+-        <div className="checkbox-group">
+-          {options.map(opt => (
+-            <label key={opt.id} className="checkbox-label">
+-              <input
+-                type="checkbox"
+-                checked={selected.includes(opt.code)}
+-                onChange={() => handleMultiSelect(name, opt.code)}
+-              />
+-              <span>{opt.value_ru}</span>
+-            </label>
+-          ))}
+-        </div>
+-      </div>
+-    )
+-  }
++  const renderMultiSelect = (name, category, label) => {
++    let options = dictionaries[category] || []
++    const selected = formData[name] || []
++
++    // Скрыть вариант "CNS" из метастаз на момент начала
++    if (name === 'metastases_sites') {
++      options = options.filter(opt => opt.code !== 'CNS')
++    }
++
++    return (
++      <div className="form-group">
++        <label className="form-label">{label}</label>
++        <div className="checkbox-group">
++          {options.map(opt => (
++            <label key={opt.id} className="checkbox-label">
++              <input
++                type="checkbox"
++                checked={selected.includes(opt.code)}
++                onChange={() => handleMultiSelect(name, opt.code)}
++              />
++              <span>{opt.value_ru}</span>
++            </label>
++          ))}
++        </div>
++      </div>
++    )
++  }
+@@ -200,6 +220,20 @@
+-  const handleChange = (e) => {
+-    const { name, value, type, checked } = e.target
+-    const newValue = type === 'checkbox' ? checked : value
+-    
+-    setFormData(prev => {
+-      const updated = { ...prev, [name]: newValue }
+-      
+-      // Auto-save logic - debounced
+-      if (isEdit) {
+-        if (autoSaveTimer) {
+-          clearTimeout(autoSaveTimer)
+-        }
+-        
+-        const timer = setTimeout(() => {
+-          autoSave({ [name]: newValue })
+-        }, 1000) // 1 second delay
+-        
+-        setAutoSaveTimer(timer)
+-      }
+-      
+-      return updated
+-    })
+-    
+-    // Special logic for CNS metastases auto-check
+-    if (name === 'metastases_sites') {
+-      const sites = Array.isArray(value) ? value : (formData.metastases_sites || [])
+-      if (sites.includes('CNS')) {
+-        setFormData(prev => ({ ...prev, cns_metastases: true }))
+-      }
+-    }
+-    
+-    // Logic for no previous therapy
+-    if (name === 'no_previous_therapy' && checked) {
+-      setFormData(prev => ({ 
+-        ...prev, 
+-        had_previous_therapy: false,
+-        previous_therapy_types: [],
+-        previous_therapy_start_date: '',
+-        previous_therapy_end_date: '',
+-        previous_therapy_response: '',
+-        previous_therapy_stop_reason: ''
+-      }))
+-    }
+-  }
++  const handleChange = (e) => {
++    const { name, value, type, checked } = e.target
++    const newValue = type === 'checkbox' ? checked : value
++
++    setFormData(prev => {
++      let updated = { ...prev, [name]: newValue }
++
++      // Если меняется галочка "Метастазы в ЦНС"
++      if (name === 'cns_metastases') {
++        let metastases = new Set(updated.metastases_sites || [])
++        if (newValue) {
++          metastases.add('CNS')
++        } else {
++          metastases.delete('CNS')
++        }
++        updated.metastases_sites = Array.from(metastases)
++      }
++
++      // Auto-save logic - debounced
++      if (isEdit) {
++        if (autoSaveTimer) {
++          clearTimeout(autoSaveTimer)
++        }
++        const timer = setTimeout(() => {
++          autoSave({ [name]: newValue })
++        }, 1000)
++        setAutoSaveTimer(timer)
++      }
++
++      return updated
++    })
++
++    // Logic for no previous therapy
++    if (name === 'no_previous_therapy' && checked) {
++      setFormData(prev => ({
++        ...prev,
++        had_previous_therapy: false,
++        previous_therapy_types: [],
++        previous_therapy_start_date: '',
++        previous_therapy_end_date: '',
++        previous_therapy_response: '',
++        previous_therapy_stop_reason: ''
++      }))
++    }
++  }
+
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -100,6 +100,8 @@
+-  // Инициализация формы с новыми полями
+-  const [formData, setFormData] = useState({
++  // Инициализация формы с новыми полями
++  const [formData, setFormData] = useState({
++    alectinib_therapy_status: '', // 'ongoing' или 'stopped'
+@@ -700,10 +702,40 @@
+-          <div className="card">
+-            <h3>Окончание лечения алектинибом</h3>
+-            
+-            <div className="grid grid-2">
+-              <DateValidation
+-                name="alectinib_end_date"
+-                label="Дата окончания"
+-                value={formData.alectinib_end_date}
+-                onChange={handleChange}
+-                validationRules={dateValidationRules.alectinib_end_date || []}
+-                otherDates={formData}
+-                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-              />
+-
+-              {renderSelect('alectinib_stop_reason', 'alectinib_stop_reason', 'Причина окончания')}
+-
+-              <div className="form-group">
+-                <label className="checkbox-label">
+-                  <input
+-                    type="checkbox"
+-                    name="had_treatment_interruption"
+-                    checked={formData.had_treatment_interruption}
+-                    onChange={handleChange}
+-                  />
+-                  <span>Было прерывание лечения</span>
+-                </label>
+-              </div>
+-
+-              <div className="form-group">
+-                <label className="checkbox-label">
+-                  <input
+-                    type="checkbox"
+-                    name="had_dose_reduction"
+-                    checked={formData.had_dose_reduction}
+-                    onChange={handleChange}
+-                  />
+-                  <span>Снижение дозы из-за НЯ</span>
+-                </label>
+-              </div>
+-            </div>
+-
+-            {formData.had_treatment_interruption && (
+-              <div className="grid grid-2">
+-                {renderSelect('interruption_reason', 'interruption_reason', 'Причина прерывания')}
+-                
+-                <div className="form-group">
+-                  <label className="form-label">Длительность прерывания (месяцев)</label>
+-                  <input
+-                    type="number"
+-                    name="interruption_duration_months"
+-                    value={formData.interruption_duration_months}
+-                    onChange={handleChange}
+-                    className="form-input"
+-                    min="0"
+-                    step="0.1"
+-                  />
+-                </div>
+-              </div>
+-            )}
+-          </div>
++          <div className="card">
++            <h3>Статус терапии алектинибом</h3>
++            <div className="form-group">
++              <label className="form-label">Терапия алектинибом</label>
++              <select
++                name="alectinib_therapy_status"
++                value={formData.alectinib_therapy_status}
++                onChange={handleChange}
++                className="form-select"
++              >
++                <option value="">Выберите...</option>
++                <option value="ongoing">Продолжается</option>
++                <option value="stopped">Прекращена</option>
++              </select>
++            </div>
++
++            {formData.alectinib_therapy_status === 'stopped' && (
++              <>
++                <div className="grid grid-2">
++                  <DateValidation
++                    name="alectinib_end_date"
++                    label="Дата окончания"
++                    value={formData.alectinib_end_date}
++                    onChange={handleChange}
++                    validationRules={dateValidationRules.alectinib_end_date || []}
++                    otherDates={formData}
++                    tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                  />
++
++                  {renderSelect('alectinib_stop_reason', 'alectinib_stop_reason', 'Причина окончания')}
++
++                  <div className="form-group">
++                    <label className="checkbox-label">
++                      <input
++                        type="checkbox"
++                        name="had_treatment_interruption"
++                        checked={formData.had_treatment_interruption}
++                        onChange={handleChange}
++                      />
++                      <span>Было прерывание лечения</span>
++                    </label>
++                  </div>
++
++                  <div className="form-group">
++                    <label className="checkbox-label">
++                      <input
++                        type="checkbox"
++                        name="had_dose_reduction"
++                        checked={formData.had_dose_reduction}
++                        onChange={handleChange}
++                      />
++                      <span>Снижение дозы из-за НЯ</span>
++                    </label>
++                  </div>
++                </div>
++
++                {formData.had_treatment_interruption && (
++                  <div className="grid grid-2">
++                    {renderSelect('interruption_reason', 'interruption_reason', 'Причина прерывания')}
++                    
++                    <div className="form-group">
++                      <label className="form-label">Длительность прерывания (месяцев)</label>
++                      <input
++                        type="number"
++                        name="interruption_duration_months"
++                        value={formData.interruption_duration_months}
++                        onChange={handleChange}
++                        className="form-input"
++                        min="0"
++                        step="0.1"
++                      />
++                    </div>
++                  </div>
++                )}
++              </>
++            )}
++          </div>
+
+
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -720,6 +720,20 @@
+-          {formData.cns_metastases && (
+-            <div className="grid grid-3">
+-              {renderSelect('cns_measurable', 'cns_measurable', 'Измеряемость')}
+-              {renderSelect('cns_symptomatic', 'cns_symptomatic', 'Симптоматичность')}
+-              {renderSelect('cns_radiotherapy', 'cns_radiotherapy', 'Радиотерапия')}
+-            </div>
+-          )}
++          {formData.cns_metastases && (
++            <>
++              <div className="grid grid-3">
++                {renderSelect('cns_measurable', 'cns_measurable', 'Измеряемость')}
++                {renderSelect('cns_symptomatic', 'cns_symptomatic', 'Симптоматичность')}
++                {renderSelect('cns_radiotherapy', 'cns_radiotherapy', 'Радиотерапия')}
++              </div>
++              <div className="form-group">
++                <label className="form-label">Когда была радиотерапия ЦНС?</label>
++                <select
++                  name="cns_radiotherapy_timing"
++                  value={formData.cns_radiotherapy_timing || ''}
++                  onChange={handleChange}
++                  className="form-select"
++                >
++                  <option value="">Выберите...</option>
++                  <option value="before">До начала лечения алектинибом</option>
++                  <option value="during">Во время лечения алектинибом</option>
++                  <option value="none">Не проводилась</option>
++                </select>
++              </div>
++            </>
++          )}
+
+
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -780,6 +794,20 @@
+-          {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
++          {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
++
++          {formData.next_line_treatments && formData.next_line_treatments.includes('OTHER') && (
++            <div className="form-group">
++              <label className="form-label">Уточните "Другое"</label>
++              <input
++                type="text"
++                name="next_line_treatments_other_text"
++                value={formData.next_line_treatments_other_text || ''}
++                onChange={handleChange}
++                className="form-input"
++                placeholder="Введите описание"
++              />
++            </div>
++          )}
+
+
+--- a/backend/init_database.py
++++ b/backend/init_database.py
+@@ -160,6 +160,8 @@
+                     ("CNS", "ЦНС", 5),
+                     ("OTHER", "Другое", 6),
+                     ("NONE", "Нет", 7),
++                    ("ADRENAL_GLAND", "Надпочечник", 8),
++                    ("MEDIASTINAL_LYMPH_NODES", "Лимфоузлы средостения", 9),
+                 ]
+             },
+             # Гистология
+
+
+--- a/backend/models.py
++++ b/backend/models.py
+@@ -120,6 +120,8 @@
+     cns_measurable = Column(String(50))  # измеряемые / неизмеряемые
+     cns_symptomatic = Column(String(50))  # симптоматические / бессимптомные
+     cns_radiotherapy = Column(String(100))  # радиотерапия проводилась / не проводилась
++    cns_radiotherapy_timing = Column(String(50)) # NEW: Когда была радиотерапия ЦНС
++    alectinib_therapy_status = Column(String(20)) # NEW: Статус терапии алектинибом
+     
+     # Ответ на терапию алектинибом
+     maximum_response = Column(String(20))  # CHANGED: Single field instead of first/second control
+@@ -150,6 +152,7 @@
+     next_line_start_date = Column(DateTime)
+     progression_on_next_line = Column(Boolean)
+     progression_on_next_line_date = Column(DateTime)
++    next_line_treatments_other_text = Column(Text) # NEW: Поле для свободного ввода "Другое"
+     next_line_end_date = Column(DateTime)
+     total_lines_after_alectinib = Column(Integer)
+
+
+--- a/backend/schemas.py
++++ b/backend/schemas.py
+@@ -80,6 +80,8 @@
+     cns_measurable: Optional[str] = None
+     cns_symptomatic: Optional[str] = None
+     cns_radiotherapy: Optional[str] = None
++    cns_radiotherapy_timing: Optional[str] = None # NEW
++    alectinib_therapy_status: Optional[str] = None # NEW
+     
+     maximum_response: Optional[str] = None
+     earliest_response_date: Optional[datetime] = None
+@@ -100,6 +102,7 @@
+     next_line_treatments: Optional[List[str]] = None
+     next_line_start_date: Optional[datetime] = None
+     progression_on_next_line: Optional[bool] = None
++    next_line_treatments_other_text: Optional[str] = None # NEW
+     progression_on_next_line_date: Optional[datetime] = None
+     next_line_end_date: Optional[datetime] = None
+     total_lines_after_alectinib: Optional[int] = None
+
+
+--- a/backend/schemas.py
++++ b/backend/schemas.py
+@@ -80,6 +80,8 @@
+     cns_measurable: Optional[str] = None
+     cns_symptomatic: Optional[str] = None
+     cns_radiotherapy: Optional[str] = None
++    cns_radiotherapy_timing: Optional[str] = None # NEW
++    alectinib_therapy_status: Optional[str] = None # NEW
+     
+     maximum_response: Optional[str] = None
+     earliest_response_date: Optional[datetime] = None
+@@ -100,6 +102,7 @@
+     next_line_treatments: Optional[List[str]] = None
+     next_line_start_date: Optional[datetime] = None
+     progression_on_next_line: Optional[bool] = None
++    next_line_treatments_other_text: Optional[str] = None # NEW
+     progression_on_next_line_date: Optional[datetime] = None
+     next_line_end_date: Optional[datetime] = None
+     total_lines_after_alectinib: Optional[int] = None

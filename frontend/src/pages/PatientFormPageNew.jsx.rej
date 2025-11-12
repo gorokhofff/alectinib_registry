@@ -1,0 +1,29 @@
+--- frontend/src/pages/PatientFormPageNew.jsx
++++ frontend/src/pages/PatientFormPageNew.jsx
+@@ -500,7 +500,7 @@
+                 {renderSelect('maximum_response', 'response', 'Максимальный ответ')}
+                 
+                 <DateValidation
+-                  name="earliest_response_date"
+-                  label="Дата наиболее раннего ответа"
++                  name="maximum_response_date"
++                  label="Дата достижения наибольшего ответа"
+                   value={formData.earliest_response_date}
+                   onChange={handleChange}
+--- frontend/src/pages/PatientFormPageNew.jsx
++++ frontend/src/pages/PatientFormPageNew.jsx
+@@ -520,7 +520,7 @@
+-                <DateValidation
+-                  name="earliest_response_date"
+-                  label="Дата наиболее раннего ответа"
+-                  value={formData.earliest_response_date}
+-                  onChange={handleChange}
+-                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-                />
++                <DateValidation
++                  name="earliest_response_date"
++                  label="Дата достижения наибольшего ответа"
++                  value={formData.earliest_response_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />

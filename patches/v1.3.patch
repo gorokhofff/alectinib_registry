@@ -1,0 +1,123 @@
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -90,6 +90,7 @@
+-  const [formData, setFormData] = useState({
++  const [formData, setFormData] = useState({
++    alectinib_therapy_status: '', // 'ongoing' или 'stopped'
+@@ -740,14 +741,38 @@
+-          <div className="card">
+-            <h3>Следующая линия терапии</h3>
+-            
+-            {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
+-            
+-            <div className="grid grid-2">
+-              <DateValidation
+-                name="next_line_start_date"
+-                label="Дата начала следующей линии"
+-                value={formData.next_line_start_date}
+-                onChange={handleChange}
+-                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-              />
+-
+-              <DateValidation
+-                name="next_line_end_date"
+-                label="Дата окончания"
+-                value={formData.next_line_end_date}
+-                onChange={handleChange}
+-                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-              />
+-
+-              <div className="form-group">
+-                <label className="checkbox-label">
+-                  <input
+-                    type="checkbox"
+-                    name="progression_on_next_line"
+-                    checked={formData.progression_on_next_line}
+-                    onChange={handleChange}
+-                  />
+-                  <span>Прогрессирование на следующей линии</span>
+-                </label>
+-              </div>
+-
+-              {formData.progression_on_next_line && (
+-                <DateValidation
+-                  name="progression_on_next_line_date"
+-                  label="Дата прогрессирования"
+-                  value={formData.progression_on_next_line_date}
+-                  onChange={handleChange}
+-                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-                />
+-              )}
+-
+-              <div className="form-group">
+-                <label className="form-label">Всего линий после алектиниба</label>
+-                <input
+-                  type="number"
+-                  name="total_lines_after_alectinib"
+-                  value={formData.total_lines_after_alectinib}
+-                  onChange={handleChange}
+-                  className="form-input"
+-                  min="0"
+-                />
+-              </div>
+-            </div>
+-          </div>
++          {formData.alectinib_therapy_status === 'stopped' && (
++            <div className="card">
++              <h3>Следующая линия терапии</h3>
++              
++              {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
++              
++              <div className="grid grid-2">
++                <DateValidation
++                  name="next_line_start_date"
++                  label="Дата начала следующей линии"
++                  value={formData.next_line_start_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />
++
++                <DateValidation
++                  name="next_line_end_date"
++                  label="Дата окончания"
++                  value={formData.next_line_end_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />
++
++                <div className="form-group">
++                  <label className="checkbox-label">
++                    <input
++                      type="checkbox"
++                      name="progression_on_next_line"
++                      checked={formData.progression_on_next_line}
++                      onChange={handleChange}
++                    />
++                    <span>Прогрессирование на следующей линии</span>
++                  </label>
++                </div>
++
++                {formData.progression_on_next_line && (
++                  <DateValidation
++                    name="progression_on_next_line_date"
++                    label="Дата прогрессирования"
++                    value={formData.progression_on_next_line_date}
++                    onChange={handleChange}
++                    tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                  />
++                )}
++
++                <div className="form-group">
++                  <label className="form-label">Всего линий после алектиниба</label>
++                  <input
++                    type="number"
++                    name="total_lines_after_alectinib"
++                    value={formData.total_lines_after_alectinib}
++                    onChange={handleChange}
++                    className="form-input"
++                    min="0"
++                  />
++                </div>
++              </div>
++            </div>
++          )}

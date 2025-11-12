@@ -1,0 +1,19 @@
+
+[Unit]
+Description=Alectinib Registry Backend Service
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/alectinib_registry/backend
+Environment="PATH=/var/www/alectinib_registry/venv/bin"
+Environment="DATABASE_URL=sqlite:////var/www/alectinib_registry/data/alectinib_registry.db"
+Environment="SECRET_KEY=CHANGE_THIS_TO_A_RANDOM_SECRET_KEY_IN_PRODUCTION"
+ExecStart=/var/www/alectinib_registry/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 5000
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

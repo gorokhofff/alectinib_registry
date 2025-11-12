@@ -1,0 +1,144 @@
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -90,6 +90,8 @@
+-  const [formData, setFormData] = useState({
++  const [formData, setFormData] = useState({
++    alectinib_therapy_status: '', // 'ongoing' или 'stopped'
+@@ -680,26 +682,56 @@
+-            <div className="card">
+-              <h3>Окончание лечения алектинибом</h3>
+-              
+-              <div className="grid grid-2">
+-                <DateValidation
+-                  name="alectinib_end_date"
+-                  label="Дата окончания"
+-                  value={formData.alectinib_end_date}
+-                  onChange={handleChange}
+-                  validationRules={dateValidationRules.alectinib_end_date || []}
+-                  otherDates={formData}
+-                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-                />
+-
+-                {renderSelect('alectinib_stop_reason', 'alectinib_stop_reason', 'Причина окончания')}
+-
+-                <div className="form-group">
+-                  <label className="checkbox-label">
+-                    <input
+-                      type="checkbox"
+-                      name="had_treatment_interruption"
+-                      checked={formData.had_treatment_interruption}
+-                      onChange={handleChange}
+-                    />
+-                    <span>Было прерывание лечения</span>
+-                  </label>
+-                </div>
+-
+-                <div className="form-group">
+-                  <label className="checkbox-label">
+-                    <input
+-                      type="checkbox"
+-                      name="had_dose_reduction"
+-                      checked={formData.had_dose_reduction}
+-                      onChange={handleChange}
+-                    />
+-                    <span>Снижение дозы из-за НЯ</span>
+-                  </label>
+-                </div>
+-              </div>
+-
+-              {formData.had_treatment_interruption && (
+-                <div className="grid grid-2">
+-                  {renderSelect('interruption_reason', 'interruption_reason', 'Причина прерывания')}
+-                  
+-                  <div className="form-group">
+-                    <label className="form-label">Длительность прерывания (месяцев)</label>
+-                    <input
+-                      type="number"
+-                      name="interruption_duration_months"
+-                      value={formData.interruption_duration_months}
+-                      onChange={handleChange}
+-                      className="form-input"
+-                      min="0"
+-                      step="0.1"
+-                    />
+-                  </div>
+-                </div>
+-              )}
+-            </div>
++            <div className="card">
++              <h3>Статус терапии алектинибом</h3>
++              <div className="form-group">
++                <label className="form-label">Терапия алектинибом</label>
++                <select
++                  name="alectinib_therapy_status"
++                  value={formData.alectinib_therapy_status}
++                  onChange={handleChange}
++                  className="form-select"
++                >
++                  <option value="">Выберите...</option>
++                  <option value="ongoing">Продолжается</option>
++                  <option value="stopped">Прекращена</option>
++                </select>
++              </div>
++
++              {formData.alectinib_therapy_status === 'stopped' && (
++                <>
++                  <div className="grid grid-2">
++                    <DateValidation
++                      name="alectinib_end_date"
++                      label="Дата окончания"
++                      value={formData.alectinib_end_date}
++                      onChange={handleChange}
++                      validationRules={dateValidationRules.alectinib_end_date || []}
++                      otherDates={formData}
++                      tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                    />
++
++                    {renderSelect('alectinib_stop_reason', 'alectinib_stop_reason', 'Причина окончания')}
++
++                    <div className="form-group">
++                      <label className="checkbox-label">
++                        <input
++                          type="checkbox"
++                          name="had_treatment_interruption"
++                          checked={formData.had_treatment_interruption}
++                          onChange={handleChange}
++                        />
++                        <span>Было прерывание лечения</span>
++                      </label>
++                    </div>
++
++                    <div className="form-group">
++                      <label className="checkbox-label">
++                        <input
++                          type="checkbox"
++                          name="had_dose_reduction"
++                          checked={formData.had_dose_reduction}
++                          onChange={handleChange}
++                        />
++                        <span>Снижение дозы из-за НЯ</span>
++                      </label>
++                    </div>
++                  </div>
++
++                  {formData.had_treatment_interruption && (
++                    <div className="grid grid-2">
++                      {renderSelect('interruption_reason', 'interruption_reason', 'Причина прерывания')}
++                      
++                      <div className="form-group">
++                        <label className="form-label">Длительность прерывания (месяцев)</label>
++                        <input
++                          type="number"
++                          name="interruption_duration_months"
++                          value={formData.interruption_duration_months}
++                          onChange={handleChange}
++                          className="form-input"
++                          min="0"
++                          step="0.1"
++                        />
++                      </div>
++                    </div>
++                  )}
++                </>
++              )}
++            </div>

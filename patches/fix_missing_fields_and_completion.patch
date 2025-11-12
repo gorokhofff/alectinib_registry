@@ -1,0 +1,231 @@
+--- a/frontend/src/components/PatientFormSidebar.css
++++ b/frontend/src/components/PatientFormSidebar.css
+@@ -46,3 +46,27 @@
+ .nav-label {
+   flex: 1;
+ }
++
++.nav-completion {
++  font-size: 12px;
++  font-weight: 600;
++  padding: 2px 8px;
++  border-radius: 10px;
++  background: #f0f0f0;
++  color: #666;
++}
++
++.nav-item.completion-green {
++  border-left: 3px solid #4caf50;
++}
++
++.nav-item.completion-green .nav-completion {
++  background: #e8f5e9;
++  color: #2e7d32;
++}
++
++.nav-item.completion-yellow {
++  border-left: 3px solid #ffc107;
++}
++
++.nav-item.completion-yellow .nav-completion {
++  background: #fff8e1;
++  color: #f57c00;
++}
++
++.nav-item.completion-red {
++  border-left: 3px solid #f44336;
++}
++
++.nav-item.completion-red .nav-completion {
++  background: #ffebee;
++  color: #c62828;
++}
+
+--- a/frontend/src/pages/PatientFormPage.jsx
++++ b/frontend/src/pages/PatientFormPage.jsx
+@@ -81,6 +81,9 @@ function PatientFormPage({ user }) {
+     next_line_treatments: [],
+     next_line_start_date: '',
+     progression_on_next_line: false,
++    next_line_progression_type: '',
++    next_line_progression_sites: [],
++    next_line_progression_sites_other_text: '',
+     progression_on_next_line_date: '',
+     next_line_end_date: '',
+     total_lines_after_alectinib: '',
+@@ -112,6 +115,7 @@ function PatientFormPage({ user }) {
+         const dateFields = [
+           'birth_date', 'initial_diagnosis_date', 'metastatic_disease_date',
+           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
+           'alectinib_start_date', 'earliest_response_date', 'progression_date',
+           'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
+@@ -204,7 +208,8 @@ function PatientFormPage({ user }) {
+       const arrayFields = [
+         'comorbidities', 'alk_methods', 'previous_therapy_types',
+-        'metastases_sites', 'progression_sites', 'next_line_treatments'
++        'metastases_sites', 'progression_sites', 'next_line_treatments',
++        'next_line_progression_sites'
+       ]
+ 
+       arrayFields.forEach(field => {
+@@ -468,6 +473,15 @@ function PatientFormPage({ user }) {
+               {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' &&
+                 renderMultiSelect('progression_sites', 'metastases_sites', 'Место прогрессирования')
+               }
++
++              {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' &&
++                formData.progression_sites && formData.progression_sites.includes('OTHER') && (
++                  <div className="form-group">
++                    <label className="form-label">Другое место прогрессирования (уточните)</label>
++                    <input type="text" name="progression_sites_other_text" value={formData.progression_sites_other_text || ''} onChange={handleChange} className="form-input" placeholder="Укажите место прогрессирования" />
++                  </div>
++                )
++              }
+             </div>
+           {formData.alectinib_therapy_status == 'STOPPED' && (
+             <div className="card">
+@@ -548,6 +562,36 @@ function PatientFormPage({ user }) {
+               {formData.progression_on_next_line && (
++                <>
+                 <DateValidation
+                   name="progression_on_next_line_date"
+                   label="Дата прогрессирования"
+                   value={formData.progression_on_next_line_date}
+                   onChange={handleChange}
+                   tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+                 />
++
++                {renderSelect('next_line_progression_type', 'progression_type', 'Тип прогрессирования')}
++                </>
+               )}
+ 
+               <div className="form-group">
+# @@ -560,6 +604,25 @@ function PatientFormPage({ user }) {
+#                </div>
+#              </div>
+# +
+# +            {formData.progression_on_next_line && (
+# +              <>
+# +                {renderMultiSelect('next_line_progression_sites', 'metastases_sites', 'Место прогрессирования на следующей линии')}
+# +
+# +                {formData.next_line_progression_sites && formData.next_line_progression_sites.includes('OTHER') && (
+# +                  <div className="form-group">
+# +                    <label className="form-label">Другое место прогрессирования (уточните)</label>
+# +                    <input
+# +                      type="text"
+# +                      name="next_line_progression_sites_other_text"
+# +                      value={formData.next_line_progression_sites_other_text || ''}
+# +                      onChange={handleChange}
+# +                      className="form-input"
+# +                      placeholder="Укажите место прогрессирования"
+# +                    />
+# +                  </div>
+# +                )}
+# +              </>
+# +            )}
+#            </div>
+#          )
+ 
+@@ -575,6 +638,7 @@ function PatientFormPage({ user }) {
+         <PatientFormSidebar
+           currentSection={currentSection}
+           onSectionChange={setCurrentSection}
+           sections={sections}
++          formData={formData}
+         />
+
+
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -81,6 +81,9 @@ function PatientFormPageNew({ user }) {
+     next_line_treatments: [],
+     next_line_start_date: '',
+     progression_on_next_line: false,
++    next_line_progression_type: '',
++    next_line_progression_sites: [],
++    next_line_progression_sites_other_text: '',
+     progression_on_next_line_date: '',
+     next_line_end_date: '',
+     total_lines_after_alectinib: '',
+@@ -112,6 +115,7 @@ function PatientFormPageNew({ user }) {
+       if (patient.clinical_record) {
+         const cr = { ...patient.clinical_record }
+         // Convert dates
+         const dateFields = [
+           'birth_date', 'initial_diagnosis_date', 'metastatic_disease_date',
+           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
+@@ -204,7 +208,8 @@ function PatientFormPageNew({ user }) {
+     // Convert empty arrays to null or remove them
+     const arrayFields = [
+       'comorbidities', 'alk_methods', 'previous_therapy_types',
+-      'metastases_sites', 'progression_sites', 'next_line_treatments'
++      'metastases_sites', 'progression_sites', 'next_line_treatments',
++      'next_line_progression_sites'
+     ]
+     
+     arrayFields.forEach(field => {
+@@ -468,6 +473,15 @@ function PatientFormPageNew({ user }) {
+               {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' && 
+                 renderMultiSelect('progression_sites', 'metastases_sites', 'Место прогрессирования')
+               }
++
++              {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' &&
++                formData.progression_sites && formData.progression_sites.includes('OTHER') && (
++                  <div className="form-group">
++                    <label className="form-label">Другое место прогрессирования (уточните)</label>
++                    <input type="text" name="progression_sites_other_text" value={formData.progression_sites_other_text || ''} onChange={handleChange} className="form-input" placeholder="Укажите место прогрессирования" />
++                  </div>
++                )
++              }
+             </div>
+           {formData.alectinib_therapy_status == 'STOPPED' && (
+             <div className="card">
+@@ -548,6 +562,36 @@ function PatientFormPageNew({ user }) {
+               {formData.progression_on_next_line && (
++                <>
+                 <DateValidation
+                   name="progression_on_next_line_date"
+                   label="Дата прогрессирования"
+                   value={formData.progression_on_next_line_date}
+                   onChange={handleChange}
+                   tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+                 />
++
++                {renderSelect('next_line_progression_type', 'progression_type', 'Тип прогрессирования')}
++                </>
+               )}
+ 
+               <div className="form-group">
+# @@ -560,6 +604,25 @@ function PatientFormPageNew({ user }) {
+#                </div>
+#              </div>
+# +
+# +            {formData.progression_on_next_line && (
+# +              <>
+# +                {renderMultiSelect('next_line_progression_sites', 'metastases_sites', 'Место прогрессирования на следующей линии')}
+# +
+# +                {formData.next_line_progression_sites && formData.next_line_progression_sites.includes('OTHER') && (
+# +                  <div className="form-group">
+# +                    <label className="form-label">Другое место прогрессирования (уточните)</label>
+# +                    <input
+# +                      type="text"
+# +                      name="next_line_progression_sites_other_text"
+# +                      value={formData.next_line_progression_sites_other_text || ''}
+# +                      onChange={handleChange}
+# +                      className="form-input"
+# +                      placeholder="Укажите место прогрессирования"
+# +                    />
+# +                  </div>
+# +                )}
+# +              </>
+# +            )}
+#            </div>
+#          )
+ 
+@@ -575,6 +638,7 @@ function PatientFormPageNew({ user }) {
+         <PatientFormSidebar 
+           currentSection={currentSection}
+           onSectionChange={setCurrentSection}
+           sections={sections}
++          formData={formData}
+         />

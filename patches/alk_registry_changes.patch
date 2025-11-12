@@ -1,0 +1,848 @@
+diff --git a/home/project/alectinib_registry/backend/models.py b/home/project/alectinib_registry/backend/models.py
+index 1234567..abcdefg 100644
+--- a/home/project/alectinib_registry/backend/models.py
++++ b/home/project/alectinib_registry/backend/models.py
+@@ -68,6 +68,7 @@ class ClinicalRecord(Base):
+     weight = Column(Float)  # кг
+     comorbidities = Column(JSON)  # Массив: список сопутствующих заболеваний
+     smoking_status = Column(String(50))  # CHANGED: Dropdown instead of free text
++    comorbidities_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
+     
+     # Диагноз
+     initial_diagnosis_date = Column(DateTime)
+@@ -91,6 +92,7 @@ class ClinicalRecord(Base):
+     stage_at_alectinib_start = Column(String(50))  # местнораспространенная / метастатическая
+     ecog_at_start = Column(Integer)  # 0-4
+     metastases_sites = Column(JSON)  # Массив: кости / печень / легкое / плевра / другое / нет
++    metastases_sites_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
+     cns_metastases = Column(Boolean)
+     cns_measurable = Column(String(50))  # измеряемые / неизмеряемые
+     cns_symptomatic = Column(String(50))  # симптоматические / бессимптомные
+@@ -107,6 +109,7 @@ class ClinicalRecord(Base):
+     progression_during_alectinib = Column(String(50))  # да олигопрогрессирование / да системное / нет
+     local_treatment_at_progression = Column(String(100))  # радиотерапия / хирургия / не проводилось
+     progression_sites = Column(JSON)  # Массив: ЦНС / кости / печень / легкое / плевра / другое
++    progression_sites_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
+     progression_date = Column(DateTime)
+     continued_after_progression = Column(Boolean)
+     
+@@ -121,6 +124,10 @@ class ClinicalRecord(Base):
+     next_line_treatments = Column(JSON)  # Массив: кризотиниб, церитиниб и т.д.
+     next_line_start_date = Column(DateTime)
+     progression_on_next_line = Column(Boolean)
++    alectinib_progression_type = Column(String(50))  # NEW: олигопрогрессирование / системное / нет
++    alectinib_progression_sites = Column(JSON)  # NEW: массив локализаций
++    alectinib_progression_sites_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
++    alectinib_progression_date = Column(DateTime)  # NEW: Дата прогрессирования
+     progression_on_next_line_date = Column(DateTime)
+     next_line_treatments_other_text = Column(Text) # NEW: Поле для свободного ввода "Другое"
+     next_line_end_date = Column(DateTime)
+
+diff --git a/home/project/alectinib_registry/backend/schemas.py b/home/project/alectinib_registry/backend/schemas.py
+index 2345678..bcdefgh 100644
+--- a/home/project/alectinib_registry/backend/schemas.py
++++ b/home/project/alectinib_registry/backend/schemas.py
+@@ -50,6 +50,7 @@ class ClinicalRecordBase(BaseModel):
+     weight: Optional[float] = Field(None, ge=20, le=300)
+     comorbidities: Optional[List[str]] = None
+     smoking_status: Optional[str] = None
++    comorbidities_other_text: Optional[str] = None
+     
+     initial_diagnosis_date: Optional[datetime] = None
+     tnm_stage: Optional[str] = None
+@@ -73,6 +74,7 @@ class ClinicalRecordBase(BaseModel):
+     stage_at_alectinib_start: Optional[str] = None
+     ecog_at_start: Optional[int] = Field(None, ge=0, le=4)
+     metastases_sites: Optional[List[str]] = None
++    metastases_sites_other_text: Optional[str] = None
+     cns_metastases: Optional[bool] = None
+     cns_measurable: Optional[str] = None
+     cns_symptomatic: Optional[str] = None
+@@ -89,6 +91,7 @@ class ClinicalRecordBase(BaseModel):
+     progression_during_alectinib: Optional[str] = None
+     local_treatment_at_progression: Optional[str] = None
+     progression_sites: Optional[List[str]] = None
++    progression_sites_other_text: Optional[str] = None
+     progression_date: Optional[datetime] = None
+     continued_after_progression: Optional[bool] = None
+     
+@@ -102,6 +105,10 @@ class ClinicalRecordBase(BaseModel):
+     next_line_treatments: Optional[List[str]] = None
+     next_line_start_date: Optional[datetime] = None
+     progression_on_next_line: Optional[bool] = None
++    alectinib_progression_type: Optional[str] = None
++    alectinib_progression_sites: Optional[List[str]] = None
++    alectinib_progression_sites_other_text: Optional[str] = None
++    alectinib_progression_date: Optional[datetime] = None
+     next_line_treatments_other_text: Optional[str] = None
+     progression_on_next_line_date: Optional[datetime] = None
+     next_line_end_date: Optional[datetime] = None
+
+diff --git a/home/project/alectinib_registry/backend/init_db.py b/home/project/alectinib_registry/backend/init_db.py
+index 3456789..cdefghi 100644
+--- a/home/project/alectinib_registry/backend/init_db.py
++++ b/home/project/alectinib_registry/backend/init_db.py
+@@ -0,0 +1,300 @@
++# Добавить в конец файла init_db.py или создать отдельный migration script
++
++def migrate_tnm_stages():
++    """Миграция TNM стадий - добавление новых вариантов"""
++    
++    new_tnm_stages = [
++        "TisN0M0", "T1a(mi)N0M0", "T1aN0M0", "T1bN0M0", "T1cN0M0", "T2aN0M0", "T2bN0M0", "T3N0M0", "T4N0M0", "TxN0M0",
++        "TisN1M0", "T1a(mi)N1M0", "T1aN1M0", "T1bN1M0", "T1cN1M0", "T2aN1M0", "T2bN1M0", "T3N1M0", "T4N1M0", "TxN1M0",
++        "TisN2M0", "T1a(mi)N2M0", "T1aN2M0", "T1bN2M0", "T1cN2M0", "T2aN2M0", "T2bN2M0", "T3N2M0", "T4N2M0", "TxN2M0",
++        "TisN3M0", "T1a(mi)N3M0", "T1aN3M0", "T1bN3M0", "T1cN3M0", "T2aN3M0", "T2bN3M0", "T3N3M0", "T4N3M0", "TxN3M0",
++        "TisNxM0", "T1a(mi)NxM0", "T1aNxM0", "T1bNxM0", "T1cNxM0", "T2aNxM0", "T2bNxM0", "T3NxM0", "T4NxM0", "TxNxM0",
++        "TisN0M1a", "T1a(mi)N0M1a", "T1aN0M1a", "T1bN0M1a", "T1cN0M1a", "T2aN0M1a", "T2bN0M1a", "T3N0M1a", "T4N0M1a", "TxN0M1a",
++        "TisN1M1a", "T1a(mi)N1M1a", "T1aN1M1a", "T1bN1M1a", "T1cN1M1a", "T2aN1M1a", "T2bN1M1a", "T3N1M1a", "T4N1M1a", "TxN1M1a",
++        "TisN2M1a", "T1a(mi)N2M1a", "T1aN2M1a", "T1bN2M1a", "T1cN2M1a", "T2aN2M1a", "T2bN2M1a", "T3N2M1a", "T4N2M1a", "TxN2M1a",
++        "TisN3M1a", "T1a(mi)N3M1a", "T1aN3M1a", "T1bN3M1a", "T1cN3M1a", "T2aN3M1a", "T2bN3M1a", "T3N3M1a", "T4N3M1a", "TxN3M1a",
++        "TisNxM1a", "T1a(mi)NxM1a", "T1aNxM1a", "T1bNxM1a", "T1cNxM1a", "T2aNxM1a", "T2bNxM1a", "T3NxM1a", "T4NxM1a", "TxNxM1a",
++        "TisN0M1b", "T1a(mi)N0M1b", "T1aN0M1b", "T1bN0M1b", "T1cN0M1b", "T2aN0M1b", "T2bN0M1b", "T3N0M1b", "T4N0M1b", "TxN0M1b",
++        "TisN1M1b", "T1a(mi)N1M1b", "T1aN1M1b", "T1bN1M1b", "T1cN1M1b", "T2aN1M1b", "T2bN1M1b", "T3N1M1b", "T4N1M1b", "TxN1M1b",
++        "TisN2M1b", "T1a(mi)N2M1b", "T1aN2M1b", "T1bN2M1b", "T1cN2M1b", "T2aN2M1b", "T2bN2M1b", "T3N2M1b", "T4N2M1b", "TxN2M1b",
++        "TisN3M1b", "T1a(mi)N3M1b", "T1aN3M1b", "T1bN3M1b", "T1cN3M1b", "T2aN3M1b", "T2bN3M1b", "T3N3M1b", "T4N3M1b", "TxN3M1b",
++        "TisNxM1b", "T1a(mi)NxM1b", "T1aNxM1b", "T1bNxM1b", "T1cNxM1b", "T2aNxM1b", "T2bNxM1b", "T3NxM1b", "T4NxM1b", "TxNxM1b",
++        "TisN0M1c", "T1a(mi)N0M1c", "T1aN0M1c", "T1bN0M1c", "T1cN0M1c", "T2aN0M1c", "T2bN0M1c", "T3N0M1c", "T4N0M1c", "TxN0M1c",
++        "TisN1M1c", "T1a(mi)N1M1c", "T1aN1M1c", "T1bN1M1c", "T1cN1M1c", "T2aN1M1c", "T2bN1M1c", "T3N1M1c", "T4N1M1c", "TxN1M1c",
++        "TisN2M1c", "T1a(mi)N2M1c", "T1aN2M1c", "T1bN2M1c", "T1cN2M1c", "T2aN2M1c", "T2bN2M1c", "T3N2M1c", "T4N2M1c", "TxN2M1c",
++        "TisN3M1c", "T1a(mi)N3M1c", "T1aN3M1c", "T1bN3M1c", "T1cN3M1c", "T2aN3M1c", "T2bN3M1c", "T3N3M1c", "T4N3M1c", "TxN3M1c",
++        "TisNxM1c", "T1a(mi)NxM1c", "T1aNxM1c", "T1bNxM1c", "T1cNxM1c", "T2aNxM1c", "T2bNxM1c", "T3NxM1c", "T4NxM1c", "TxNxM1c"
++    ]
++    
++    # Деактивировать старые записи, которых нет в новом списке
++    existing_tnm = session.query(Dictionary).filter(
++        Dictionary.category == 'tnm_stage'
++    ).all()
++    
++    for item in existing_tnm:
++        if item.code not in new_tnm_stages:
++            item.is_active = False
++    
++    # Добавить новые записи
++    for idx, tnm_code in enumerate(new_tnm_stages, start=1):
++        existing = session.query(Dictionary).filter(
++            Dictionary.category == 'tnm_stage',
++            Dictionary.code == tnm_code
++        ).first()
++        
++        if not existing:
++            new_record = Dictionary(
++                category='tnm_stage',
++                code=tnm_code,
++                value_ru=tnm_code,
++                is_active=True,
++                sort_order=idx
++            )
++            session.add(new_record)
++        else:
++            existing.is_active = True
++            existing.sort_order = idx
++    
++    session.commit()
++    print(f"✅ Миграция TNM стадий завершена: {len(new_tnm_stages)} записей")
++
++
++def add_progression_dictionaries():
++    """Добавление новых справочников для прогрессирования"""
++    
++    # Справочник progression_sites
++    progression_sites = [
++        ('CNS', 'ЦНС', 1),
++        ('BONES', 'Кости', 2),
++        ('LIVER', 'Печень', 3),
++        ('LUNG', 'Легкое', 4),
++        ('PLEURA', 'Плевра', 5),
++        ('LYMPH_NODE', 'Лимфоузлы средостения', 6),
++        ('ADRENAL', 'Надпочечник', 7),
++        ('OTHER', 'Другое', 8),
++    ]
++    
++    for code, value_ru, sort_order in progression_sites:
++        existing = session.query(Dictionary).filter(
++            Dictionary.category == 'progression_sites',
++            Dictionary.code == code
++        ).first()
++        
++        if not existing:
++            new_record = Dictionary(
++                category='progression_sites',
++                code=code,
++                value_ru=value_ru,
++                is_active=True,
++                sort_order=sort_order
++            )
++            session.add(new_record)
++    
++    # Справочник alectinib_progression_type
++    progression_types = [
++        ('OLIGO', 'Олигопрогрессирование', 1),
++        ('SYSTEMIC', 'Системное', 2),
++        ('NONE', 'Нет', 3),
++    ]
++    
++    for code, value_ru, sort_order in progression_types:
++        existing = session.query(Dictionary).filter(
++            Dictionary.category == 'alectinib_progression_type',
++            Dictionary.code == code
++        ).first()
++        
++        if not existing:
++            new_record = Dictionary(
++                category='alectinib_progression_type',
++                code=code,
++                value_ru=value_ru,
++                is_active=True,
++                sort_order=sort_order
++            )
++            session.add(new_record)
++    
++    session.commit()
++    print("✅ Справочники прогрессирования добавлены")
++
++
++# Запустить миграции
++if __name__ == "__main__":
++    from database import SessionLocal
++    from models import Dictionary
++    
++    session = SessionLocal()
++    try:
++        migrate_tnm_stages()
++        add_progression_dictionaries()
++    except Exception as e:
++        print(f"❌ Ошибка миграции: {e}")
++        session.rollback()
++    finally:
++        session.close()
+
+diff --git a/frontend/components/PatientFormSidebar.jsx b/frontend/components/PatientFormSidebar.jsx
+index 4567890..defghij 100644
+--- a/frontend/components/PatientFormSidebar.jsx
++++ b/frontend/components/PatientFormSidebar.jsx
+@@ -1,19 +1,109 @@
+ import React from 'react'
+ import './PatientFormSidebar.css'
+ 
+-function PatientFormSidebar({ currentSection, onSectionChange, sections }) {
++function PatientFormSidebar({ currentSection, onSectionChange, sections, formData }) {
++  
++  // Определение полей для каждого раздела
++  const sectionFields = {
++    'current-status': [
++      'current_status', 
++      'last_contact_date'
++    ],
++    'patient-basic': [
++      'patient_code', 
++      'date_filled', 
++      'gender', 
++      'birth_date', 
++      'height', 
++      'weight', 
++      'comorbidities', 
++      'smoking_status'
++    ],
++    'diagnosis-alk': [
++      'initial_diagnosis_date', 
++      'tnm_stage', 
++      'histology', 
++      'alk_diagnosis_date', 
++      'alk_methods', 
++      'alk_fusion_variant', 
++      'tp53_comutation', 
++      'ttf1_expression'
++    ],
++    'previous-therapy': [
++      'had_previous_therapy', 
++      'no_previous_therapy',
++      'previous_therapy_types', 
++      'previous_therapy_start_date', 
++      'previous_therapy_response'
++    ],
++    'alectinib-complete': [
++      'alectinib_start_date', 
++      'stage_at_alectinib_start', 
++      'ecog_at_start', 
++      'metastases_sites', 
++      'maximum_response', 
++      'progression_during_alectinib'
++    ],
++    'next-line': [
++      'next_line_treatments', 
++      'next_line_start_date', 
++      'progression_on_next_line'
++    ]
++  }
++  
++  // Функция для проверки заполненности поля
++  const isFieldFilled = (value) => {
++    if (value === null || value === undefined || value === '') return false
++    if (Array.isArray(value)) return value.length > 0
++    if (typeof value === 'boolean') return true // булевы поля всегда считаем заполненными
++    return true
++  }
++  
++  // Расчет процента заполненности раздела
++  const calculateCompletion = (sectionId) => {
++    if (!formData) return 0
++    
++    const fields = sectionFields[sectionId] || []
++    if (fields.length === 0) return 0
++    
++    const filledCount = fields.filter(field => isFieldFilled(formData[field])).length
++    return Math.round((filledCount / fields.length) * 100)
++  }
++  
++  // Получение CSS класса для цветовой индикации
++  const getCompletionClass = (percentage) => {
++    if (percentage === 0) return ''
++    if (percentage > 90) return 'completion-high'
++    if (percentage >= 70) return 'completion-medium'
++    return 'completion-low'
++  }
++  
+   return (
+     <div className="form-sidebar">
+       <div className="sidebar-header">
+         <h3>Разделы формы</h3>
+       </div>
+       <nav className="sidebar-nav">
+         {sections.map((section) => {
++          const completion = calculateCompletion(section.id)
++          const completionClass = getCompletionClass(completion)
++          
+           return (
+             <button
+               key={section.id}
+-              className={`nav-item ${currentSection === section.id ? 'active' : ''}`}
++              className={`nav-item ${currentSection === section.id ? 'active' : ''} ${completionClass}`}
+               onClick={() => onSectionChange(section.id)}
+             >
+-              <span className="nav-icon">{section.icon}</span>
+-              <span className="nav-label">{section.title}</span>
++              <div className="nav-item-content">
++                <span className="nav-icon">{section.icon}</span>
++                <span className="nav-label">{section.title}</span>
++              </div>
++              {completion > 0 && (
++                <span className="completion-badge">
++                  {completion}%
++                </span>
++              )}
+             </button>
+           )
+         })}
+
+diff --git a/frontend/components/PatientFormSidebar.css b/frontend/components/PatientFormSidebar.css
+index 5678901..efghijk 100644
+--- a/frontend/components/PatientFormSidebar.css
++++ b/frontend/components/PatientFormSidebar.css
+@@ -30,6 +30,7 @@
+   border: none;
+   background: transparent;
+   cursor: pointer;
++  position: relative;
+   transition: all 0.2s ease;
+ }
+ 
+@@ -42,6 +43,51 @@
+   font-weight: 600;
+ }
+ 
++/* Цветовая индикация заполненности */
++.nav-item.completion-high {
++  background-color: rgba(34, 197, 94, 0.1);
++  border-left: 3px solid #22c55e;
++}
++
++.nav-item.completion-medium {
++  background-color: rgba(234, 179, 8, 0.1);
++  border-left: 3px solid #eab308;
++}
++
++.nav-item.completion-low {
++  background-color: rgba(239, 68, 68, 0.1);
++  border-left: 3px solid #ef4444;
++}
++
++.nav-item.completion-high:hover {
++  background-color: rgba(34, 197, 94, 0.2);
++}
++
++.nav-item.completion-medium:hover {
++  background-color: rgba(234, 179, 8, 0.2);
++}
++
++.nav-item.completion-low:hover {
++  background-color: rgba(239, 68, 68, 0.2);
++}
++
++.nav-item-content {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  flex: 1;
++}
++
++.completion-badge {
++  font-size: 11px;
++  font-weight: 600;
++  padding: 2px 6px;
++  border-radius: 10px;
++  background-color: rgba(0, 0, 0, 0.1);
++  color: inherit;
++  margin-left: auto;
++}
++
+ .nav-icon {
+   font-size: 18px;
+   display: inline-block;
+
+diff --git a/home/project/alectinib_registry/frontend/src/pages/PatientFormPage.jsx b/home/project/alectinib_registry/frontend/src/pages/PatientFormPage.jsx
+index 6789012..fghijkl 100644
+--- a/home/project/alectinib_registry/frontend/src/pages/PatientFormPage.jsx
++++ b/home/project/alectinib_registry/frontend/src/pages/PatientFormPage.jsx
+@@ -39,6 +39,7 @@ function PatientFormPage({ user }) {
+     weight: '',
+     comorbidities: [],
+     smoking_status: '',
++    comorbidities_other_text: '',
+     initial_diagnosis_date: '',
+     tnm_stage: '',
+     metastatic_disease_date: '',
+@@ -60,6 +61,7 @@ function PatientFormPage({ user }) {
+     ecog_at_start: '',
+     metastases_sites: [],
+     cns_metastases: false,
++    metastases_sites_other_text: '',
+     cns_measurable: '',
+     cns_symptomatic: '',
+     cns_radiotherapy: '',
+@@ -69,6 +71,7 @@ function PatientFormPage({ user }) {
+     progression_during_alectinib: '',
+     local_treatment_at_progression: '',
+     progression_sites: [],
++    progression_sites_other_text: '',
+     progression_date: '',
+     continued_after_progression: false,
+     alectinib_end_date: '',
+@@ -80,6 +83,10 @@ function PatientFormPage({ user }) {
+     next_line_treatments: [],
+     next_line_start_date: '',
+     progression_on_next_line: false,
++    alectinib_progression_type: '',
++    alectinib_progression_sites: [],
++    alectinib_progression_sites_other_text: '',
++    alectinib_progression_date: '',
+     progression_on_next_line_date: '',
+     next_line_end_date: '',
+     total_lines_after_alectinib: '',
+@@ -118,7 +125,8 @@ function PatientFormPage({ user }) {
+           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
+           'alectinib_start_date', 'earliest_response_date', 'progression_date',
+           'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
+-          'next_line_end_date', 'last_contact_date', 'date_filled'
++          'next_line_end_date', 'last_contact_date', 'date_filled', 
++          'alectinib_progression_date'
+         ]
+         dateFields.forEach(field => {
+           if (cr[field]) {
+@@ -233,7 +241,8 @@ function PatientFormPage({ user }) {
+           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
+           'alectinib_start_date', 'earliest_response_date', 'progression_date',
+           'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
+-          'next_line_end_date', 'last_contact_date', 'date_filled'
++          'next_line_end_date', 'last_contact_date', 'date_filled',
++          'alectinib_progression_date'
+         ]
+         dateFields.forEach(field => {
+           if (preparedData[field] && preparedData[field] !== '') {
+@@ -436,6 +445,18 @@ function PatientFormPage({ user }) {
+ 
+             {renderMultiSelect('comorbidities', 'comorbidities', 'Сопутствующие заболевания')}
+ 
++            {formData.comorbidities?.includes('OTHER') && (
++              <div className="form-group">
++                <label className="form-label">
++                  Укажите другое сопутствующее заболевание
++                  <span className="required">*</span>
++                </label>
++                <input
++                  type="text"
++                  name="comorbidities_other_text"
++                  value={formData.comorbidities_other_text}
++                  onChange={handleChange}
++                  className="form-input"
++                  placeholder="Введите название заболевания"
++                  required
++                />
++              </div>
++            )}
++
+             {renderSelect('smoking_status', 'smoking_status', 'Курение')}
+           </div>
+         )
+@@ -644,6 +665,18 @@ function PatientFormPage({ user }) {
+ 
+             {renderMultiSelect('metastases_sites', 'metastases_sites', 'Метастазы на момент начала')}
+ 
++            {formData.metastases_sites?.includes('OTHER') && (
++              <div className="form-group">
++                <label className="form-label">
++                  Укажите другую локализацию метастазов
++                  <span className="required">*</span>
++                </label>
++                <input
++                  type="text"
++                  name="metastases_sites_other_text"
++                  value={formData.metastases_sites_other_text}
++                  onChange={handleChange}
++                  className="form-input"
++                  placeholder="Введите локализацию"
++                  required
++                />
++              </div>
++            )}
++
+             {formData.metastases_sites?.includes('CNS') && (
+               <div className="grid grid-2">
+                 <div className="form-group">
+@@ -729,8 +762,22 @@ function PatientFormPage({ user }) {
+               </div>
+ 
+               {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' &&
+-                renderMultiSelect('progression_sites', 'metastases_sites', 'Место прогрессирования')
++                <>
++                  {renderMultiSelect('progression_sites', 'progression_sites', 'Место прогрессирования')}
++                  
++                  {formData.progression_sites?.includes('OTHER') && (
++                    <div className="form-group">
++                      <label className="form-label">
++                        Укажите другое место прогрессирования
++                        <span className="required">*</span>
++                      </label>
++                      <input
++                        type="text"
++                        name="progression_sites_other_text"
++                        value={formData.progression_sites_other_text}
++                        onChange={handleChange}
++                        className="form-input"
++                        placeholder="Введите локализацию"
++                        required
++                      />
++                    </div>
++                  )}
++                </>
+               }
+             </div>
+             {formData.alectinib_therapy_status == 'STOPPED' && (
+@@ -813,6 +860,65 @@ function PatientFormPage({ user }) {
+ 
+             {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
+ 
++            {formData.next_line_treatments?.includes('OTHER') && (
++              <div className="form-group">
++                <label className="form-label">
++                  Укажите другое лечение
++                  <span className="required">*</span>
++                </label>
++                <input
++                  type="text"
++                  name="next_line_treatments_other_text"
++                  value={formData.next_line_treatments_other_text}
++                  onChange={handleChange}
++                  className="form-input"
++                  placeholder="Введите название препарата/метода"
++                  required
++                />
++              </div>
++            )}
++
+             <div className="grid grid-2">
+               <DateValidation
+                 name="next_line_start_date"
+@@ -841,6 +947,65 @@ function PatientFormPage({ user }) {
+               </div>
+ 
+               {formData.progression_on_next_line && (
++                <>
+                 <DateValidation
++                  name="alectinib_progression_date"
++                  label="Дата прогрессирования"
++                  value={formData.alectinib_progression_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />
++
++                {renderSelect('alectinib_progression_type', 'alectinib_progression_type', 'Тип прогрессирования')}
++                </>
++              )}
++            </div>
++
++            {formData.progression_on_next_line && (
++              <>
++                {renderMultiSelect('alectinib_progression_sites', 'progression_sites', 'Место прогрессирования')}
++
++                {formData.alectinib_progression_sites?.includes('OTHER') && (
++                  <div className="form-group">
++                    <label className="form-label">
++                      Укажите другое место прогрессирования
++                      <span className="required">*</span>
++                    </label>
++                    <input
++                      type="text"
++                      name="alectinib_progression_sites_other_text"
++                      value={formData.alectinib_progression_sites_other_text}
++                      onChange={handleChange}
++                      className="form-input"
++                      placeholder="Введите локализацию"
++                      required
++                    />
++                  </div>
++                )}
++              </>
++            )}
++
++            <div className="grid grid-2">
++              {formData.progression_on_next_line && (
++                <DateValidation
+                   name="progression_on_next_line_date"
+-                  label="Дата прогрессирования"
++                  label="Дата окончания из-за прогрессирования"
+                   value={formData.progression_on_next_line_date}
+                   onChange={handleChange}
+                   tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+@@ -883,6 +1048,7 @@ function PatientFormPage({ user }) {
+           currentSection={currentSection}
+           onSectionChange={setCurrentSection}
+           sections={sections}
++          formData={formData}
+         />
+ 
+         <div className="form-content">
+
+diff --git a/home/project/alectinib_registry/frontend/src/pages/PatientFormPageNew.jsx b/home/project/alectinib_registry/frontend/src/pages/PatientFormPageNew.jsx
+index 7890123..ghijklm 100644
+--- a/home/project/alectinib_registry/frontend/src/pages/PatientFormPageNew.jsx
++++ b/home/project/alectinib_registry/frontend/src/pages/PatientFormPageNew.jsx
+@@ -47,6 +47,7 @@ function PatientFormPageNew({ user }) {
+     weight: '',
+     comorbidities: [],
+     smoking_status: '', // Now dropdown
++    comorbidities_other_text: '',
+     
+     // Диагноз
+     initial_diagnosis_date: '',
+@@ -76,6 +77,7 @@ function PatientFormPageNew({ user }) {
+     ecog_at_start: '',
+     metastases_sites: [],
+     cns_metastases: false,
++    metastases_sites_other_text: '',
+     cns_measurable: '',
+     cns_symptomatic: '',
+     cns_radiotherapy: '',
+@@ -88,6 +90,7 @@ function PatientFormPageNew({ user }) {
+     progression_during_alectinib: '',
+     local_treatment_at_progression: '',
+     progression_sites: [],
++    progression_sites_other_text: '',
+     progression_date: '',
+     continued_after_progression: false,
+     
+@@ -104,6 +107,10 @@ function PatientFormPageNew({ user }) {
+     next_line_treatments: [],
+     next_line_start_date: '',
+     progression_on_next_line: false,
++    alectinib_progression_type: '',
++    alectinib_progression_sites: [],
++    alectinib_progression_sites_other_text: '',
++    alectinib_progression_date: '',
+     progression_on_next_line_date: '',
+     next_line_end_date: '',
+     total_lines_after_alectinib: '',
+@@ -144,7 +151,8 @@ function PatientFormPageNew({ user }) {
+           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
+           'alectinib_start_date', 'earliest_response_date', 'progression_date',
+           'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
+-          'next_line_end_date', 'last_contact_date', 'date_filled'
++          'next_line_end_date', 'last_contact_date', 'date_filled',
++          'alectinib_progression_date'
+         ]
+         dateFields.forEach(field => {
+           if (cr[field]) {
+@@ -261,7 +269,8 @@ function PatientFormPageNew({ user }) {
+           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
+           'alectinib_start_date', 'earliest_response_date', 'progression_date',
+           'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
+-          'next_line_end_date', 'last_contact_date', 'date_filled'
++          'next_line_end_date', 'last_contact_date', 'date_filled',
++          'alectinib_progression_date'
+         ]
+         dateFields.forEach(field => {
+           if (preparedData[field] && preparedData[field] !== '') {
+@@ -478,6 +487,18 @@ function PatientFormPageNew({ user }) {
+ 
+             {renderMultiSelect('comorbidities', 'comorbidities', 'Сопутствующие заболевания')}
+ 
++            {formData.comorbidities?.includes('OTHER') && (
++              <div className="form-group">
++                <label className="form-label">
++                  Укажите другое сопутствующее заболевание
++                  <span className="required">*</span>
++                </label>
++                <input
++                  type="text"
++                  name="comorbidities_other_text"
++                  value={formData.comorbidities_other_text}
++                  onChange={handleChange}
++                  className="form-input"
++                  placeholder="Введите название заболевания"
++                  required
++                />
++              </div>
++            )}
++
+             {renderSelect('smoking_status', 'smoking_status', 'Курение')}
+           </div>
+         )
+@@ -702,6 +723,18 @@ function PatientFormPageNew({ user }) {
+ 
+             {renderMultiSelect('metastases_sites', 'metastases_sites', 'Метастазы на момент начала')}
+ 
++            {formData.metastases_sites?.includes('OTHER') && (
++              <div className="form-group">
++                <label className="form-label">
++                  Укажите другую локализацию метастазов
++                  <span className="required">*</span>
++                </label>
++                <input
++                  type="text"
++                  name="metastases_sites_other_text"
++                  value={formData.metastases_sites_other_text}
++                  onChange={handleChange}
++                  className="form-input"
++                  placeholder="Введите локализацию"
++                  required
++                />
++              </div>
++            )}
++
+             {formData.metastases_sites?.includes('CNS') && (
+               <div className="grid grid-2">
+                 <div className="form-group">
+@@ -795,7 +828,21 @@ function PatientFormPageNew({ user }) {
+               </div>
+ 
+               {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' && 
+-                renderMultiSelect('progression_sites', 'metastases_sites', 'Место прогрессирования')
++                <>
++                  {renderMultiSelect('progression_sites', 'progression_sites', 'Место прогрессирования')}
++                  
++                  {formData.progression_sites?.includes('OTHER') && (
++                    <div className="form-group">
++                      <label className="form-label">
++                        Укажите другое место прогрессирования
++                        <span className="required">*</span>
++                      </label>
++                      <input
++                        type="text"
++                        name="progression_sites_other_text"
++                        value={formData.progression_sites_other_text}
++                        onChange={handleChange}
++                        className="form-input"
++                        placeholder="Введите локализацию"
++                        required
++                      />
++                    </div>
++                  )}
++                </>
+               }
+             </div>
+           {formData.alectinib_therapy_status == 'STOPPED' && (
+@@ -878,6 +925,19 @@ function PatientFormPageNew({ user }) {
+             
+             {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
+             
++            {formData.next_line_treatments?.includes('OTHER') && (
++              <div className="form-group">
++                <label className="form-label">
++                  Укажите другое лечение
++                  <span className="required">*</span>
++                </label>
++                <input
++                  type="text"
++                  name="next_line_treatments_other_text"
++                  value={formData.next_line_treatments_other_text}
++                  onChange={handleChange}
++                  className="form-input"
++                  placeholder="Введите название препарата/метода"
++                  required
++                />
++              </div>
++            )}
++
+             <div className="grid grid-2">
+               <DateValidation
+                 name="next_line_start_date"
+@@ -906,8 +966,67 @@ function PatientFormPageNew({ user }) {
+                 </label>
+               </div>
+ 
+               {formData.progression_on_next_line && (
++                <>
+                 <DateValidation
++                  name="alectinib_progression_date"
++                  label="Дата прогрессирования"
++                  value={formData.alectinib_progression_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />
++
++                {renderSelect('alectinib_progression_type', 'alectinib_progression_type', 'Тип прогрессирования')}
++                </>
++              )}
++            </div>
++
++            {formData.progression_on_next_line && (
++              <>
++                {renderMultiSelect('alectinib_progression_sites', 'progression_sites', 'Место прогрессирования')}
++
++                {formData.alectinib_progression_sites?.includes('OTHER') && (
++                  <div className="form-group">
++                    <label className="form-label">
++                      Укажите другое место прогрессирования
++                      <span className="required">*</span>
++                    </label>
++                    <input
++                      type="text"
++                      name="alectinib_progression_sites_other_text"
++                      value={formData.alectinib_progression_sites_other_text}
++                      onChange={handleChange}
++                      className="form-input"
++                      placeholder="Введите локализацию"
++                      required
++                    />
++                  </div>
++                )}
++              </>
++            )}
++
++            <div className="grid grid-2">
++              {formData.progression_on_next_line && (
++                <DateValidation
+                   name="progression_on_next_line_date"
+-                  label="Дата прогрессирования"
++                  label="Дата окончания из-за прогрессирования"
+                   value={formData.progression_on_next_line_date}
+                   onChange={handleChange}
+                   tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+@@ -948,6 +1067,7 @@ function PatientFormPageNew({ user }) {
+           currentSection={currentSection}
+           onSectionChange={setCurrentSection}
+           sections={sections}
++          formData={formData}
+         />
+         
+         <div className="form-content">

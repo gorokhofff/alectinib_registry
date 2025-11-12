@@ -1,0 +1,156 @@
+--- a/frontend/src/pages/PatientFormPageNew.jsx
++++ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -650,10 +650,14 @@
+-                <DateValidation
+-                  name="maximum_response_date"
+-                  label="Дата достижения наибольшего ответа"
+-                  value={formData.earliest_response_date}
+-                  onChange={handleChange}
+-                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-                />
++                <DateValidation
++                  name="earliest_response_date"
++                  label="Дата достижения наибольшего ответа"
++                  value={formData.earliest_response_date}
++                  onChange={handleChange}
++                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
++                />
+@@ -300,15 +304,27 @@
+-  const handleChange = (e) => {
+-    const { name, value, type, checked } = e.target
+-    const newValue = type === 'checkbox' ? checked : value
+-    
+-    setFormData(prev => {
+-      const updated = { ...prev, [name]: newValue }
+-      
+-      // Auto-save logic - debounced
+-      if (isEdit) {
+-        if (autoSaveTimer) {
+-          clearTimeout(autoSaveTimer)
+-        }
+-        
+-        const timer = setTimeout(() => {
+-          autoSave({ [name]: newValue })
+-        }, 1000) // 1 second delay
+-        
+-        setAutoSaveTimer(timer)
+-      }
+-      
+-      return updated
+-    })
+-    
+-    // Special logic for CNS metastases auto-check
+-    if (name === 'metastases_sites') {
+-      const sites = Array.isArray(value) ? value : (formData.metastases_sites || [])
+-      if (sites.includes('CNS')) {
+-        setFormData(prev => ({ ...prev, cns_metastases: true }))
+-      }
+-    }
+-    
+-    // Logic for no previous therapy
+-    if (name === 'no_previous_therapy' && checked) {
+-      setFormData(prev => ({ 
+-        ...prev, 
+-        had_previous_therapy: false,
+-        previous_therapy_types: [],
+-        previous_therapy_start_date: '',
+-        previous_therapy_end_date: '',
+-        previous_therapy_response: '',
+-        previous_therapy_stop_reason: ''
+-      }))
+-    }
+-  }
++  const handleChange = (e) => {
++    const { name, value, type, checked } = e.target
++    const newValue = type === 'checkbox' ? checked : value
++
++    setFormData(prev => {
++      let updated = { ...prev, [name]: newValue }
++
++      // Если меняется галочка "Метастазы в ЦНС"
++      if (name === 'cns_metastases') {
++        let metastases = new Set(updated.metastases_sites || [])
++        if (newValue) {
++          metastases.add('CNS')
++        } else {
++          metastases.delete('CNS')
++        }
++        updated.metastases_sites = Array.from(metastases)
++      }
++
++      // Auto-save logic - debounced
++      if (isEdit) {
++        if (autoSaveTimer) {
++          clearTimeout(autoSaveTimer)
++        }
++        const timer = setTimeout(() => {
++          autoSave({ [name]: newValue })
++        }, 1000)
++        setAutoSaveTimer(timer)
++      }
++
++      return updated
++    })
++
++    // Logic for no previous therapy
++    if (name === 'no_previous_therapy' && checked) {
++      setFormData(prev => ({
++        ...prev,
++        had_previous_therapy: false,
++        previous_therapy_types: [],
++        previous_therapy_start_date: '',
++        previous_therapy_end_date: '',
++        previous_therapy_response: '',
++        previous_therapy_stop_reason: ''
++      }))
++    }
++  }
+@@ -320,10 +336,18 @@
+-  const handleMultiSelect = (name, value) => {
+-    setFormData(prev => {
+-      const currentValues = prev[name] || []
+-      const newValues = currentValues.includes(value)
+-        ? currentValues.filter(v => v !== value)
+-        : [...currentValues, value]
+-      
+-      const updated = { ...prev, [name]: newValues }
+-      
+-      // Auto-check CNS metastases when ЦНС is selected
+-      if (name === 'metastases_sites' && newValues.includes('CNS')) {
+-        updated.cns_metastases = true
+-      }
+-      
+-      // Auto-save
+-      if (isEdit) {
+-        if (autoSaveTimer) clearTimeout(autoSaveTimer)
+-        const timer = setTimeout(() => autoSave({ [name]: newValues }), 1000)
+-        setAutoSaveTimer(timer)
+-      }
+-      
+-      return updated
+-    })
+-  }
++  const handleMultiSelect = (name, value) => {
++    setFormData(prev => {
++      const currentValues = prev[name] || []
++      const newValues = currentValues.includes(value)
++        ? currentValues.filter(v => v !== value)
++        : [...currentValues, value]
++
++      let updated = { ...prev, [name]: newValues }
++
++      // Синхронизируем cns_metastases с метастазами
++      if (name === 'metastases_sites') {
++        updated.cns_metastases = newValues.includes('CNS')
++      }
++
++      // Auto-save
++      if (isEdit) {
++        if (autoSaveTimer) clearTimeout(autoSaveTimer)
++        const timer = setTimeout(() => autoSave({ [name]: newValues }), 1000)
++        setAutoSaveTimer(timer)
++      }
++
++      return updated
++    })
++  }

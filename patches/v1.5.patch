@@ -1,0 +1,165 @@
+--- a/frontend/src/pages/PatientFormPageNew.jsx
+ b/frontend/src/pages/PatientFormPageNew.jsx
+@@ -370,10 370,14 @@
+       case 'alectinib-complete':
+         return (
+           <>
+             <div className="card">
+               <h3>Лечение алектинибом</h3>
+               
+               <div className="grid grid-2">
+                 <DateValidation
+                   name="alectinib_start_date"
+                   label="Дата начала лечения"
+                   value={formData.alectinib_start_date}
+                   onChange={handleChange}
+                   tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+                 />
+ 
+-                {renderSelect('stage_at_alectinib_start', 'stage_at_alectinib_start', 'Стадия на момент начала')}
+                {renderSelect('stage_at_alectinib_start', 'stage_at_alectinib_start', 'Стадия на момент начала')}
+
+                {renderSelect('alectinib_therapy_status', 'alectinib_therapy_status', 'Статус терапии алектинибом', true)}
+ 
+                 <div className="form-group">
+                   <label className="form-label">ECOG статус (0-4)</label>
+                   <input
+                     type="number"
+                     name="ecog_at_start"
+                     value={formData.ecog_at_start}
+                     onChange={handleChange}
+                     className="form-input"
+                     min="0"
+                     max="4"
+                   />
+                 </div>
+               </div>
+@@ -740,18 744,28 @@
+       case 'next-line':
+-        return (
+-          <div className="card">
+-            <h3>Следующая линия терапии</h3>
+-            
+-            {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
+-            
+-            <div className="grid grid-2">
+-              <DateValidation
+-                name="next_line_start_date"
+-                label="Дата начала следующей линии"
+-                value={formData.next_line_start_date}
+-                onChange={handleChange}
+-                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-              />
+-
+-              <DateValidation
+-                name="next_line_end_date"
+-                label="Дата окончания"
+-                value={formData.next_line_end_date}
+-                onChange={handleChange}
+-                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-              />
+-
+-              <div className="form-group">
+-                <label className="checkbox-label">
+-                  <input
+-                    type="checkbox"
+-                    name="progression_on_next_line"
+-                    checked={formData.progression_on_next_line}
+-                    onChange={handleChange}
+-                  />
+-                  <span>Прогрессирование на следующей линии</span>
+-                </label>
+-              </div>
+-
+-              {formData.progression_on_next_line && (
+-                <DateValidation
+-                  name="progression_on_next_line_date"
+-                  label="Дата прогрессирования"
+-                  value={formData.progression_on_next_line_date}
+-                  onChange={handleChange}
+-                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+-                />
+-              )}
+-
+-              <div className="form-group">
+-                <label className="form-label">Всего линий после алектиниба</label>
+-                <input
+-                  type="number"
+-                  name="total_lines_after_alectinib"
+-                  value={formData.total_lines_after_alectinib}
+-                  onChange={handleChange}
+-                  className="form-input"
+-                  min="0"
+-                />
+-              </div>
+-            </div>
+-          </div>
+-        )
+        if (formData.alectinib_therapy_status !== 'STOPPED') {
+          return (
+            <div className="card">
+              <h3>Следующая линия терапии</h3>
+              <p>Доступно только при статусе терапии "Прекращена"</p>
+            </div>
+          )
+        }
+
+        return (
+          <div className="card">
+            <h3>Следующая линия терапии</h3>
+            
+            {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
+            
+            <div className="grid grid-2">
+              <DateValidation
+                name="next_line_start_date"
+                label="Дата начала следующей линии"
+                value={formData.next_line_start_date}
+                onChange={handleChange}
+                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+              />
+
+              <DateValidation
+                name="next_line_end_date"
+                label="Дата окончания"
+                value={formData.next_line_end_date}
+                onChange={handleChange}
+                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+              />
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    name="progression_on_next_line"
+                    checked={formData.progression_on_next_line}
+                    onChange={handleChange}
+                  />
+                  <span>Прогрессирование на следующей линии</span>
+                </label>
+              </div>
+
+              {formData.progression_on_next_line && (
+                <DateValidation
+                  name="progression_on_next_line_date"
+                  label="Дата прогрессирования"
+                  value={formData.progression_on_next_line_date}
+                  onChange={handleChange}
+                  tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+                />
+              )}
+
+              <div className="form-group">
+                <label className="form-label">Всего линий после алектиниба</label>
+                <input
+                  type="number"
+                  name="total_lines_after_alectinib"
+                  value={formData.total_lines_after_alectinib}
+                  onChange={handleChange}
+                  className="form-input"
+                  min="0"
+                />
+              </div>
+            </div>
+          </div>
+        )

@@ -1,0 +1,51 @@
+
+.tnm-select-container {
+  position: relative;
+}
+
+.tnm-search {
+  width: 100%;
+}
+
+.tnm-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-top: none;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.tnm-option {
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+}
+
+.tnm-option:hover {
+  background-color: #f5f5f5;
+}
+
+.tnm-option:last-child {
+  border-bottom: none;
+}
+
+.tnm-more {
+  padding: 8px 16px;
+  font-style: italic;
+  color: #666;
+  background: #f9f9f9;
+  font-size: 12px;
+}
+
+.tnm-no-results {
+  padding: 12px 16px;
+  color: #666;
+  font-style: italic;
+}

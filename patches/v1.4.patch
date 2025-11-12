@@ -1,0 +1,60 @@
+--- a/backend/models.py
++++ b/backend/models.py
+@@ -120,6 +120,8 @@
+     cns_measurable = Column(String(50))  # измеряемые / неизмеряемые
+     cns_symptomatic = Column(String(50))  # симптоматические / бессимптомные
+     cns_radiotherapy = Column(String(100))  # радиотерапия проводилась / не проводилась
++    cns_radiotherapy_timing = Column(String(50)) # NEW: Когда была радиотерапия ЦНС
++    alectinib_therapy_status = Column(String(20)) # NEW: Статус терапии алектинибом
+     
+     # Ответ на терапию алектинибом
+     maximum_response = Column(String(20))  # CHANGED: Single field instead of first/second control
+@@ -150,6 +152,7 @@
+     next_line_start_date = Column(DateTime)
+     progression_on_next_line = Column(Boolean)
+     progression_on_next_line_date = Column(DateTime)
++    next_line_treatments_other_text = Column(Text) # NEW: Поле для свободного ввода "Другое"
+     next_line_end_date = Column(DateTime)
+     total_lines_after_alectinib = Column(Integer)
+
+
+--- a/backend/schemas.py
++++ b/backend/schemas.py
+@@ -80,6 +80,8 @@
+     cns_measurable: Optional[str] = None
+     cns_symptomatic: Optional[str] = None
+     cns_radiotherapy: Optional[str] = None
++    cns_radiotherapy_timing: Optional[str] = None # NEW
++    alectinib_therapy_status: Optional[str] = None # NEW
+     
+     maximum_response: Optional[str] = None
+     earliest_response_date: Optional[datetime] = None
+@@ -100,6 +102,7 @@
+     next_line_treatments: Optional[List[str]] = None
+     next_line_start_date: Optional[datetime] = None
+     progression_on_next_line: Optional[bool] = None
++    next_line_treatments_other_text: Optional[str] = None # NEW
+     progression_on_next_line_date: Optional[datetime] = None
+     next_line_end_date: Optional[datetime] = None
+     total_lines_after_alectinib: Optional[int] = None
+
+
+--- a/backend/schemas.py
++++ b/backend/schemas.py
+@@ -80,6 +80,8 @@
+     cns_measurable: Optional[str] = None
+     cns_symptomatic: Optional[str] = None
+     cns_radiotherapy: Optional[str] = None
++    cns_radiotherapy_timing: Optional[str] = None # NEW
++    alectinib_therapy_status: Optional[str] = None # NEW
+     
+     maximum_response: Optional[str] = None
+     earliest_response_date: Optional[datetime] = None
+@@ -100,6 +102,7 @@
+     next_line_treatments: Optional[List[str]] = None
+     next_line_start_date: Optional[datetime] = None
+     progression_on_next_line: Optional[bool] = None
++    next_line_treatments_other_text: Optional[str] = None # NEW
+     progression_on_next_line_date: Optional[datetime] = None
+     next_line_end_date: Optional[datetime] = None
+     total_lines_after_alectinib: Optional[int] = None

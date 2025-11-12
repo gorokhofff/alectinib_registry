@@ -1,0 +1,44 @@
+
+.validation-error {
+  color: #d32f2f;
+  font-size: 12px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.validation-error:before {
+  content: "⚠";
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.form-input.error {
+  border-color: #d32f2f;
+  background-color: #fff5f5;
+}
+
+.form-input.error:focus {
+  border-color: #d32f2f;
+  box-shadow: 0 0 0 2px rgba(211, 47, 47, 0.2);
+}
+
+.date-tooltip {
+  margin-left: 0.5rem;
+  cursor: help;
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.date-hint {
+  font-size: 0.75rem;
+  color: #666;
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.hint-icon {
+  font-size: 0.75rem;
+}

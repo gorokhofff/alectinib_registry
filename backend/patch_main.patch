@@ -1,0 +1,22 @@
+--- a/main.py
++++ b/main.py
+@@ -130,6 +130,8 @@ class AlectinibTreatmentBase(BaseModel):
+     alectinib_start_date: Optional[date] = None
+     alectinib_end_date: Optional[date] = None
+     metastases_site: Optional[List[str]] = None
++    metastases_other_site: Optional[str] = None
+     progression: Optional[bool] = None
+     progression_date: Optional[date] = None
+     progression_site: Optional[List[str]] = None
++    progression_other_site: Optional[str] = None
+     therapy_status: Optional[str] = None
+@@ -142,6 +144,11 @@ class NextLineTreatmentBase(BaseModel):
+     next_line_start_date: Optional[date] = None
+     next_line_end_date: Optional[date] = None
+     next_line_therapy_name: Optional[str] = None
++    has_progression: Optional[bool] = None
++    progression_date: Optional[date] = None
++    progression_type: Optional[str] = None
++    progression_sites: Optional[List[str]] = None
++    progression_other_site: Optional[str] = None
+     next_line_therapy_status: Optional[str] = None
