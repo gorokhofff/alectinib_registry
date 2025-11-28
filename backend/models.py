@@ -1,5 +1,5 @@
 
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, ForeignKey, JSON, UniqueConstraint, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -51,6 +51,7 @@ class Patient(Base):
     id = Column(Integer, primary_key=True, index=True)
     institution_id = Column(Integer, ForeignKey('institutions.id'), nullable=False)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=False)
+    registry_type = Column(String(50), nullable=False, default='ALK', index=True)  # 'ALK' or 'ROS1'
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -147,6 +148,30 @@ class ClinicalRecord(Base):
     next_line_end_date = Column(DateTime)
     total_lines_after_alectinib = Column(Integer)
     
+    # Generic Therapy Fields (for ROS1 and other registries)
+    # These fields allow tracking any therapy type, not just Alectinib
+    therapy_type = Column(String(50))  # Registry type: ALK, ROS1, etc.
+    therapy_name = Column(String(100))  # Specific therapy name: Alectinib, Crizotinib, Entrectinib, Lorlatinib
+    therapy_line = Column(String(50))  # 1st line, 2nd line, 3rd line, etc.
+    therapy_start_date = Column(DateTime)
+    therapy_end_date = Column(DateTime)
+    therapy_status = Column(String(50))  # ongoing / stopped
+    stage_at_therapy_start = Column(String(50))  # местнораспространенная / метастатическая
+    therapy_response = Column(String(20))  # ПО / ЧО / СЗ / ПЗ / НП
+    therapy_response_date = Column(DateTime)
+    progression_during_therapy = Column(String(50))  # олигопрогрессирование / системное / нет
+    progression_sites_during_therapy = Column(JSON)  # массив локализаций
+    progression_date_during_therapy = Column(DateTime)
+    therapy_stop_reason = Column(Text)
+    therapy_interruption = Column(Boolean)
+    therapy_interruption_reason = Column(Text)
+    therapy_dose_reduction = Column(Boolean)
+    
+    # ROS1-specific diagnostic fields
+    ros1_diagnosis_date = Column(DateTime)
+    ros1_methods = Column(JSON)  # Массив: ИГХ / FISH / ПЦР / NGS
+    ros1_fusion_variant = Column(String(100))  # Fusion partner details
+    
     # Статус пациента
     current_status = Column(String(50))  # жив / умер / ушел из-под наблюдения
     last_contact_date = Column(DateTime)
@@ -166,6 +191,10 @@ class Dictionary(Base):
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        UniqueConstraint('category', 'code', name='uix_dictionary_category_code'),
+    )
 
 class AuditLog(Base):
     __tablename__ = 'audit_logs'

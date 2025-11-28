@@ -1,934 +1,1087 @@
-
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
-from typing import List, Optional
-from datetime import date, datetime, timedelta
-import json
-import io
-import csv
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, and_, or_
+from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any
+import os
 
-from database import get_db
-from models import User, Institution, Patient, ClinicalRecord, Dictionary, AuditLog
+from database import engine, get_db
+from models import Base, User, Institution, Patient, ClinicalRecord, Dictionary, AuditLog
 from schemas import (
     UserLogin, UserResponse, TokenResponse, UserCreate, UserUpdate,
     InstitutionCreate, InstitutionResponse,
-    PatientCreate, PatientUpdate, PatientResponse,
-    ClinicalRecordCreate, ClinicalRecordUpdate, ClinicalRecordResponse,
-    DictionaryCreate, DictionaryUpdate, DictionaryResponse,
-    AuditLogResponse, AnalyticsResponse, PatientSearch, CompletionResponse
+    PatientCreate, PatientResponse, PatientUpdate, PatientSearch,
+    ClinicalRecordCreate, ClinicalRecordResponse, ClinicalRecordUpdate,
+    DictionaryCreate, DictionaryResponse, DictionaryUpdate,
+    AuditLogResponse, AnalyticsResponse, CompletionResponse
 )
 from auth import create_access_token, get_current_user, require_admin
 
+# Создание таблиц БД
+Base.metadata.create_all(bind=engine)
+
+# Инициализация FastAPI приложения
 app = FastAPI(
     title="Alectinib Registry API",
-    description="API для регистра клинических случаев лечения алектинибом",
+    description="API для регистра пациентов, получающих терапию алектинибом",
     version="1.0.0"
 )
 
-# CORS settings
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене указать конкретные домены
+    allow_origins=["*"],  # В production заменить на конкретные домены
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Вспомогательная функция для логирования
-def log_action(db: Session, user_id: int, action: str, record_type: str = None, 
-               record_id: int = None, details: dict = None):
-    log = AuditLog(
+# Утилиты для аудита
+def create_audit_log(
+    db: Session,
+    user_id: int,
+    action: str,
+    record_type: str = None,
+    record_id: int = None,
+    details: dict = None
+):
+    """Создание записи в журнале аудита"""
+    audit = AuditLog(
         user_id=user_id,
         action=action,
         record_type=record_type,
         record_id=record_id,
         details=details
     )
-    db.add(log)
+    db.add(audit)
     db.commit()
 
-# Вспомогательная функция для расчета возраста
-def calculate_age(birth_date: datetime, diagnosis_date: datetime) -> int:
-    age = diagnosis_date.year - birth_date.year
-    if (diagnosis_date.month, diagnosis_date.day) < (birth_date.month, birth_date.day):
-        age -= 1
-    return age
-
-# Вспомогательная функция для расчета процента заполнения
-def calculate_completion_percentage(clinical_record) -> CompletionResponse:
-    if not clinical_record:
-        return CompletionResponse(filled_fields=0, total_fields=88, completion_percentage=0.0)
-    
-    # Define all fields that should be counted
-    main_fields = [
-        'patient_code', 'gender', 'birth_date', 'height', 'weight', 
-        'smoking_status', 'initial_diagnosis_date', 'tnm_stage', 
-        'metastatic_disease_date', 'histology', 'alk_diagnosis_date', 
-        'alk_fusion_variant', 'tp53_comutation', 'ttf1_expression',
-        'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
-        'maximum_response', 'earliest_response_date', 'intracranial_response',
-        'progression_during_alectinib', 'current_status', 'last_contact_date'
-    ]
-    
-    # Array fields
-    array_fields = [
-        'comorbidities', 'alk_methods', 'previous_therapy_types',
-        'metastases_sites', 'progression_sites', 'next_line_treatments'
-    ]
-    
-    # Conditional fields based on data
-    conditional_fields = []
-    
-    # Previous therapy fields (if had_previous_therapy is True)
-    if getattr(clinical_record, 'had_previous_therapy', False):
-        conditional_fields.extend([
-            'previous_therapy_start_date', 'previous_therapy_end_date',
-            'previous_therapy_response', 'previous_therapy_stop_reason'
-        ])
-    
-    # CNS fields (if cns_metastases is True)
-    if getattr(clinical_record, 'cns_metastases', False):
-        conditional_fields.extend([
-            'cns_measurable', 'cns_symptomatic', 'cns_radiotherapy'
-        ])
-    
-    # Progression fields (if progression occurred)
-    if getattr(clinical_record, 'progression_during_alectinib') in ['да олигопрогрессирование', 'да системное']:
-        conditional_fields.extend([
-            'local_treatment_at_progression', 'progression_date',
-            'continued_after_progression'
-        ])
-    
-    # Treatment end fields (if alectinib_end_date exists)
-    if getattr(clinical_record, 'alectinib_end_date'):
-        conditional_fields.extend([
-            'alectinib_stop_reason', 'had_treatment_interruption',
-            'had_dose_reduction'
-        ])
-    
-    # Interruption fields (if had_treatment_interruption is True)
-    if getattr(clinical_record, 'had_treatment_interruption', False):
-        conditional_fields.extend([
-            'interruption_reason', 'interruption_duration_months'
-        ])
-    
-    # Next line fields (if there's next line treatment)
-    if getattr(clinical_record, 'next_line_treatments') and len(getattr(clinical_record, 'next_line_treatments') or []) > 0:
-        conditional_fields.extend([
-            'next_line_start_date', 'progression_on_next_line',
-            'next_line_end_date', 'total_lines_after_alectinib'
-        ])
-    
-    # Next line progression fields (if progression_on_next_line is True)
-    if getattr(clinical_record, 'progression_on_next_line', False):
-        conditional_fields.append('progression_on_next_line_date')
-    
-    all_fields = main_fields + array_fields + conditional_fields
-    total_fields = len(all_fields)
-    filled_fields = 0
-    
-    for field in all_fields:
-        value = getattr(clinical_record, field, None)
-        if value is not None:
-            if isinstance(value, list):
-                if len(value) > 0:
-                    filled_fields += 1
-            elif isinstance(value, str):
-                if value.strip() != '':
-                    filled_fields += 1
-            else:
-                filled_fields += 1
-    
-    completion_percentage = round((filled_fields / total_fields) * 100, 1) if total_fields > 0 else 0.0
-    
-    return CompletionResponse(
-        filled_fields=filled_fields,
-        total_fields=total_fields,
-        completion_percentage=completion_percentage
-    )
-
-# ==================== AUTHENTICATION ====================
+# ============================================================================
+# АУТЕНТИФИКАЦИЯ
+# ============================================================================
 
 @app.post("/api/auth/login", response_model=TokenResponse)
-def login(user_login: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == user_login.username).first()
+async def login(credentials: UserLogin, db: Session = Depends(get_db)):
+    """Вход в систему"""
+    user = db.query(User).filter(
+        User.username == credentials.username,
+        User.is_active == True
+    ).first()
     
-    if not user or not user.check_password(user_login.password):
+    if not user or not user.check_password(credentials.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password"
+            detail="Неверный логин или пароль"
         )
     
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is disabled"
-        )
-    
-    # Update last login
+    # Обновление времени последнего входа
     user.last_login = datetime.utcnow()
     db.commit()
     
-    # Log login
-    log_action(db, user.id, "login")
-    
-    # Create access token
+    # Создание токена
     access_token = create_access_token(data={"sub": user.username})
     
-    institution_name = user.institution.name if user.institution else ""
+    # Получение информации об учреждении
+    institution = db.query(Institution).filter(Institution.id == user.institution_id).first()
     
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "role": user.role,
-            "institution_id": user.institution_id,
-            "institution_name": institution_name,
-            "is_active": user.is_active
-        }
-    }
-
-@app.post("/api/auth/logout")
-def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    log_action(db, current_user.id, "logout")
-    return {"message": "Logged out successfully"}
+    # Создание записи в аудите
+    create_audit_log(db, user.id, "login")
+    
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse(
+            id=user.id,
+            username=user.username,
+            role=user.role,
+            institution_id=user.institution_id,
+            institution_name=institution.name if institution else "",
+            is_active=user.is_active,
+            last_login=user.last_login
+        )
+    )
 
 @app.get("/api/auth/me", response_model=UserResponse)
-def get_me(current_user: User = Depends(get_current_user)):
-    return {
-        "id": current_user.id,
-        "username": current_user.username,
-        "role": current_user.role,
-        "institution_id": current_user.institution_id,
-        "institution_name": current_user.institution.name,
-        "is_active": current_user.is_active
-    }
-
-# ==================== USERS ====================
-
-@app.post("/api/users", response_model=UserResponse)
-def create_user(
-    user_create: UserCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    # Check if username already exists
-    existing_user = db.query(User).filter(User.username == user_create.username).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    # Create new user
-    new_user = User(
-        username=user_create.username,
-        role=user_create.role,
-        institution_id=user_create.institution_id
+async def get_me(current_user: User = Depends(get_current_user)):
+    """Получение информации о текущем пользователе"""
+    institution = current_user.institution
+    return UserResponse(
+        id=current_user.id,
+        username=current_user.username,
+        role=current_user.role,
+        institution_id=current_user.institution_id,
+        institution_name=institution.name if institution else "",
+        is_active=current_user.is_active,
+        last_login=current_user.last_login
     )
-    new_user.set_password(user_create.password)
+
+# ============================================================================
+# ПОЛЬЗОВАТЕЛИ
+# ============================================================================
+
+@app.get("/api/users", response_model=List[UserResponse])
+async def get_users(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Получение списка всех пользователей (только для админов)"""
+    users = db.query(User).options(joinedload(User.institution)).all()
+    return [
+        UserResponse(
+            id=u.id,
+            username=u.username,
+            role=u.role,
+            institution_id=u.institution_id,
+            institution_name=u.institution.name if u.institution else "",
+            is_active=u.is_active,
+            last_login=u.last_login
+        ) for u in users
+    ]
+
+@app.post("/api/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    user_data: UserCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Создание нового пользователя (только для админов)"""
+    # Проверка уникальности username
+    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пользователь с таким логином уже существует"
+        )
+    
+    # Проверка существования учреждения
+    institution = db.query(Institution).filter(Institution.id == user_data.institution_id).first()
+    if not institution:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Учреждение не найдено"
+        )
+    
+    # Создание пользователя
+    new_user = User(
+        username=user_data.username,
+        role=user_data.role,
+        institution_id=user_data.institution_id
+    )
+    new_user.set_password(user_data.password)
     
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
     
-    log_action(db, current_user.id, "create_user", "user", new_user.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "create_user", "user", new_user.id)
     
-    return {
-        "id": new_user.id,
-        "username": new_user.username,
-        "role": new_user.role,
-        "institution_id": new_user.institution_id,
-        "institution_name": new_user.institution.name,
-        "is_active": new_user.is_active
-    }
-
-@app.get("/api/users", response_model=List[UserResponse])
-def list_users(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    users = db.query(User).all()
-    return [
-        {
-            "id": u.id,
-            "username": u.username,
-            "role": u.role,
-            "institution_id": u.institution_id,
-            "institution_name": u.institution.name,
-            "is_active": u.is_active,
-            "last_login": u.last_login
-        }
-        for u in users
-    ]
+    return UserResponse(
+        id=new_user.id,
+        username=new_user.username,
+        role=new_user.role,
+        institution_id=new_user.institution_id,
+        institution_name=institution.name,
+        is_active=new_user.is_active,
+        last_login=new_user.last_login
+    )
 
 @app.put("/api/users/{user_id}", response_model=UserResponse)
-def update_user(
+async def update_user(
     user_id: int,
-    user_update: UserUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    user_data: UserUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
+    """Обновление пользователя (только для админов)"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден"
+        )
     
-    if user_update.username is not None:
-        user.username = user_update.username
-    if user_update.password is not None:
-        user.set_password(user_update.password)
-    if user_update.role is not None:
-        user.role = user_update.role
-    if user_update.institution_id is not None:
-        user.institution_id = user_update.institution_id
-    if user_update.is_active is not None:
-        user.is_active = user_update.is_active
+    # Обновление полей
+    if user_data.username is not None:
+        # Проверка уникальности
+        existing = db.query(User).filter(
+            User.username == user_data.username,
+            User.id != user_id
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Пользователь с таким логином уже существует"
+            )
+        user.username = user_data.username
+    
+    if user_data.password is not None:
+        user.set_password(user_data.password)
+    
+    if user_data.role is not None:
+        user.role = user_data.role
+    
+    if user_data.institution_id is not None:
+        institution = db.query(Institution).filter(
+            Institution.id == user_data.institution_id
+        ).first()
+        if not institution:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Учреждение не найдено"
+            )
+        user.institution_id = user_data.institution_id
+    
+    if user_data.is_active is not None:
+        user.is_active = user_data.is_active
     
     db.commit()
     db.refresh(user)
     
-    log_action(db, current_user.id, "update_user", "user", user.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "update_user", "user", user.id)
     
-    return {
-        "id": user.id,
-        "username": user.username,
-        "role": user.role,
-        "institution_id": user.institution_id,
-        "institution_name": user.institution.name,
-        "is_active": user.is_active,
-        "last_login": user.last_login
-    }
+    institution = db.query(Institution).filter(Institution.id == user.institution_id).first()
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        role=user.role,
+        institution_id=user.institution_id,
+        institution_name=institution.name if institution else "",
+        is_active=user.is_active,
+        last_login=user.last_login
+    )
 
-@app.delete("/api/users/{user_id}")
-def delete_user(
+@app.delete("/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
     user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
+    """Удаление пользователя (только для админов)"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден"
+        )
     
-    # Soft delete
-    user.is_active = False
+    # Нельзя удалить себя
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нельзя удалить себя"
+        )
+    
+    # Аудит
+    create_audit_log(db, current_user.id, "delete_user", "user", user.id)
+    
+    db.delete(user)
     db.commit()
     
-    log_action(db, current_user.id, "delete_user", "user", user.id)
-    
-    return {"message": "User deleted successfully"}
+    return None
 
-# ==================== INSTITUTIONS ====================
+# ============================================================================
+# УЧРЕЖДЕНИЯ
+# ============================================================================
 
-@app.post("/api/institutions", response_model=InstitutionResponse)
-def create_institution(
-    institution: InstitutionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+@app.get("/api/institutions", response_model=List[InstitutionResponse])
+async def get_institutions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    new_institution = Institution(**institution.dict())
+    """Получение списка всех учреждений"""
+    institutions = db.query(Institution).filter(Institution.is_active == True).all()
+    return institutions
+
+@app.post("/api/institutions", response_model=InstitutionResponse, status_code=status.HTTP_201_CREATED)
+async def create_institution(
+    institution_data: InstitutionCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Создание нового учреждения (только для админов)"""
+    # Проверка уникальности
+    existing = db.query(Institution).filter(Institution.name == institution_data.name).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Учреждение с таким названием уже существует"
+        )
+    
+    new_institution = Institution(**institution_data.dict())
     db.add(new_institution)
     db.commit()
     db.refresh(new_institution)
     
-    log_action(db, current_user.id, "create_institution", "institution", new_institution.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "create_institution", "institution", new_institution.id)
     
     return new_institution
 
-@app.get("/api/institutions", response_model=List[InstitutionResponse])
-def list_institutions(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    institutions = db.query(Institution).filter(Institution.is_active == True).all()
-    return institutions
-
 @app.put("/api/institutions/{institution_id}", response_model=InstitutionResponse)
-def update_institution(
+async def update_institution(
     institution_id: int,
-    institution_update: InstitutionCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    institution_data: InstitutionCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
+    """Обновление учреждения (только для админов)"""
     institution = db.query(Institution).filter(Institution.id == institution_id).first()
     if not institution:
-        raise HTTPException(status_code=404, detail="Institution not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Учреждение не найдено"
+        )
     
-    for key, value in institution_update.dict().items():
-        setattr(institution, key, value)
+    # Проверка уникальности названия
+    existing = db.query(Institution).filter(
+        Institution.name == institution_data.name,
+        Institution.id != institution_id
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Учреждение с таким названием уже существует"
+        )
     
+    for field, value in institution_data.dict().items():
+        setattr(institution, field, value)
+    
+    institution.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(institution)
     
-    log_action(db, current_user.id, "update_institution", "institution", institution.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "update_institution", "institution", institution.id)
     
     return institution
 
-@app.delete("/api/institutions/{institution_id}")
-def delete_institution(
+@app.delete("/api/institutions/{institution_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_institution(
     institution_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
+    """Деактивация учреждения (только для админов)"""
     institution = db.query(Institution).filter(Institution.id == institution_id).first()
     if not institution:
-        raise HTTPException(status_code=404, detail="Institution not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Учреждение не найдено"
+        )
     
-    # Soft delete
-    institution.is_active = False
-    db.commit()
+    # Проверка, есть ли связанные пользователи или пациенты
+    has_users = db.query(User).filter(User.institution_id == institution_id).count() > 0
+    has_patients = db.query(Patient).filter(Patient.institution_id == institution_id).count() > 0
     
-    log_action(db, current_user.id, "delete_institution", "institution", institution.id)
-    
-    return {"message": "Institution deleted successfully"}
-
-# ==================== AUTO-SAVE FUNCTIONALITY ====================
-
-@app.patch("/api/patients/{patient_id}/auto-save")
-def auto_save_patient(
-    patient_id: int,
-    field_updates: dict,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Auto-save individual fields as user types"""
-    patient = db.query(Patient).filter(Patient.id == patient_id, Patient.is_active == True).first()
-    
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    
-    # Check access rights
-    if current_user.role != 'admin' and patient.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    # Update clinical record fields
-    clinical_record = patient.clinical_record
-    for field, value in field_updates.items():
-        if hasattr(clinical_record, field):
-            if field.endswith('_date'):
-                if isinstance(value, str):
-                    if value == '':
-                        value = None  # Преобразуем пустую строку в None
-                    else:
-                        try:
-                            value = datetime.strptime(value, '%Y-%m-%d')
-                        except ValueError:
-                            pass
-            setattr(clinical_record, field, value)
-        
-        patient.updated_at = datetime.utcnow()
+    if has_users or has_patients:
+        # Деактивация вместо удаления
+        institution.is_active = False
+        db.commit()
+    else:
+        # Полное удаление
+        db.delete(institution)
         db.commit()
     
-    return {"status": "saved", "fields": list(field_updates.keys())}
+    # Аудит
+    create_audit_log(db, current_user.id, "delete_institution", "institution", institution_id)
+    
+    return None
 
-# ==================== PATIENTS ====================
-
-@app.post("/api/patients", response_model=PatientResponse)
-def create_patient(
-    patient_data: PatientCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    # Create patient
-    new_patient = Patient(
-        institution_id=current_user.institution_id,
-        created_by=current_user.id
-    )
-    db.add(new_patient)
-    db.flush()
-    
-    # Create clinical record
-    clinical_data = patient_data.clinical_record.dict()
-    
-    # Handle date fields - convert string to datetime if needed
-    for key, value in clinical_data.items():
-        if key.endswith('_date') and isinstance(value, str) and value:
-            try:
-                clinical_data[key] = datetime.strptime(value, '%Y-%m-%d')
-            except ValueError:
-                pass  # Keep as is if parsing fails
-    
-    # Calculate age if birth_date and initial_diagnosis_date are provided
-    if clinical_data.get('birth_date') and clinical_data.get('initial_diagnosis_date'):
-        clinical_data['age_at_diagnosis'] = calculate_age(
-            clinical_data['birth_date'],
-            clinical_data['initial_diagnosis_date']
-        )
-    
-    clinical_record = ClinicalRecord(patient_id=new_patient.id, **clinical_data)
-    db.add(clinical_record)
-    
-    db.commit()
-    db.refresh(new_patient)
-    
-    log_action(db, current_user.id, "create_patient", "patient", new_patient.id)
-    
-    return {
-        "id": new_patient.id,
-        "institution_id": new_patient.institution_id,
-        "institution_name": new_patient.institution.name,
-        "created_by": new_patient.created_by,
-        "is_active": new_patient.is_active,
-        "created_at": new_patient.created_at,
-        "updated_at": new_patient.updated_at,
-        "clinical_record": clinical_record
-    }
+# ============================================================================
+# ПАЦИЕНТЫ
+# ============================================================================
 
 @app.get("/api/patients", response_model=List[PatientResponse])
-def list_patients(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+async def get_patients(
     search: Optional[str] = None,
-    institution_id: Optional[int] = None,
-    patient_code: Optional[str] = None,
-    birth_date: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    registry_type: Optional[str] = 'ALK',  # FIX: Set a default to prevent pulling all data if param missing
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    query = db.query(Patient).filter(Patient.is_active == True)
+    """Получение списка пациентов с учетом прав доступа"""
+    query = db.query(Patient).options(
+        joinedload(Patient.clinical_record),
+        joinedload(Patient.institution)
+    ).filter(Patient.is_active == True)
     
-    # Если пользователь не администратор, показываем только пациентов его учреждения
+    # Фильтрация по учреждению для обычных пользователей
     if current_user.role != 'admin':
         query = query.filter(Patient.institution_id == current_user.institution_id)
-    elif institution_id:
-        query = query.filter(Patient.institution_id == institution_id)
     
-    # Add search functionality
-    if patient_code:
-        query = query.join(ClinicalRecord).filter(
-            ClinicalRecord.patient_code.ilike(f"%{patient_code}%")
+    # FIX: Ensure registry_type filtering is robust
+    if registry_type:
+        query = query.filter(Patient.registry_type == registry_type)
+    
+    # Поиск по коду пациента
+    if search:
+        query = query.join(Patient.clinical_record).filter(
+            ClinicalRecord.patient_code.ilike(f"%{search}%")
         )
     
-    if birth_date:
-        try:
-            # Parse date in DD-MM-YYYY format
-            search_date = datetime.strptime(birth_date, "%d-%m-%Y").date()
-            query = query.join(ClinicalRecord).filter(
-                func.date(ClinicalRecord.birth_date) == search_date
-            )
-        except ValueError:
-            try:
-                # Try MM/DD/YYYY format
-                search_date = datetime.strptime(birth_date, "%m/%d/%Y").date()
-                query = query.join(ClinicalRecord).filter(
-                    func.date(ClinicalRecord.birth_date) == search_date
-                )
-            except ValueError:
-                pass  # Ignore invalid date formats
+    patients = query.order_by(Patient.created_at.desc()).all()
     
-    patients = query.offset(skip).limit(limit).all()
-    
+    # Ручное создание PatientResponse для каждого пациента
     return [
-        {
-            "id": p.id,
-            "institution_id": p.institution_id,
-            "institution_name": p.institution.name,
-            "created_by": p.created_by,
-            "is_active": p.is_active,
-            "created_at": p.created_at,
-            "updated_at": p.updated_at,
-            "clinical_record": p.clinical_record
-        }
+        PatientResponse(
+            id=p.id,
+            institution_id=p.institution_id,
+            institution_name=p.institution.name if p.institution else "",
+            created_by=p.created_by,
+            registry_type=p.registry_type,
+            is_active=p.is_active,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+            clinical_record=ClinicalRecordResponse.from_orm(p.clinical_record) if p.clinical_record else None
+        )
         for p in patients
     ]
 
 @app.get("/api/patients/{patient_id}", response_model=PatientResponse)
-def get_patient(
+async def get_patient(
     patient_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    patient = db.query(Patient).filter(Patient.id == patient_id, Patient.is_active == True).first()
+    """Получение данных пациента"""
+    patient = db.query(Patient).options(
+        joinedload(Patient.clinical_record),
+        joinedload(Patient.institution)
+    ).filter(Patient.id == patient_id).first()
     
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пациент не найден"
+        )
     
-    # Check access rights
+    # Проверка прав доступа
     if current_user.role != 'admin' and patient.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен"
+        )
     
-    return {
-        "id": patient.id,
-        "institution_id": patient.institution_id,
-        "institution_name": patient.institution.name,
-        "created_by": patient.created_by,
-        "is_active": patient.is_active,
-        "created_at": patient.created_at,
-        "updated_at": patient.updated_at,
-        "clinical_record": patient.clinical_record
-    }
+    # Ручное создание PatientResponse
+    return PatientResponse(
+        id=patient.id,
+        institution_id=patient.institution_id,
+        institution_name=patient.institution.name if patient.institution else "",
+        created_by=patient.created_by,
+        registry_type=patient.registry_type,
+        is_active=patient.is_active,
+        created_at=patient.created_at,
+        updated_at=patient.updated_at,
+        clinical_record=ClinicalRecordResponse.from_orm(patient.clinical_record) if patient.clinical_record else None
+    )
+
+@app.post("/api/patients", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
+async def create_patient(
+    patient_data: PatientCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Создание нового пациента"""
+    # Создание пациента
+    new_patient = Patient(
+        institution_id=current_user.institution_id,
+        created_by=current_user.id,
+        registry_type=patient_data.registry_type or 'ALK'  # Set registry_type from request
+    )
+    db.add(new_patient)
+    db.flush()  # Получаем ID пациента
+    
+    # Создание клинической записи
+    clinical_data = patient_data.clinical_record.dict()
+    
+    # Расчет возраста при диагнозе
+    if clinical_data.get('birth_date') and clinical_data.get('initial_diagnosis_date'):
+        birth_date = clinical_data['birth_date']
+        diagnosis_date = clinical_data['initial_diagnosis_date']
+        age = (diagnosis_date - birth_date).days // 365
+        clinical_data['age_at_diagnosis'] = age
+    
+    clinical_record = ClinicalRecord(
+        patient_id=new_patient.id,
+        **clinical_data
+    )
+    db.add(clinical_record)
+    db.commit()
+    db.refresh(new_patient)
+    
+    # Аудит
+    create_audit_log(db, current_user.id, "create_patient", "patient", new_patient.id)
+    
+    # Загрузка связанных данных
+    patient = db.query(Patient).options(
+        joinedload(Patient.clinical_record),
+        joinedload(Patient.institution)
+    ).filter(Patient.id == new_patient.id).first()
+    
+    # Ручное создание PatientResponse
+    return PatientResponse(
+        id=patient.id,
+        institution_id=patient.institution_id,
+        institution_name=patient.institution.name if patient.institution else "",
+        created_by=patient.created_by,
+        registry_type=patient.registry_type,
+        is_active=patient.is_active,
+        created_at=patient.created_at,
+        updated_at=patient.updated_at,
+        clinical_record=ClinicalRecordResponse.from_orm(patient.clinical_record) if patient.clinical_record else None
+    )
 
 @app.put("/api/patients/{patient_id}", response_model=PatientResponse)
-def update_patient(
+async def update_patient(
     patient_id: int,
-    patient_update: PatientUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    patient_data: PatientUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    patient = db.query(Patient).filter(Patient.id == patient_id, Patient.is_active == True).first()
+    """Обновление данных пациента"""
+    patient = db.query(Patient).options(
+        joinedload(Patient.clinical_record)
+    ).filter(Patient.id == patient_id).first()
     
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пациент не найден"
+        )
     
-    # Check access rights
+    # Проверка прав доступа
     if current_user.role != 'admin' and patient.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен"
+        )
     
-    # Update clinical record
-    if patient_update.clinical_record:
-        clinical_record = patient.clinical_record
-        update_data = patient_update.clinical_record.dict(exclude_unset=True)
+    # Обновление клинической записи
+    clinical_data = patient_data.clinical_record.dict(exclude_unset=True)
+    
+    # Пересчет возраста при диагнозе
+    if patient.clinical_record:
+        birth_date = clinical_data.get('birth_date', patient.clinical_record.birth_date)
+        diagnosis_date = clinical_data.get('initial_diagnosis_date', patient.clinical_record.initial_diagnosis_date)
         
-        # Преобразование пустых строк в None для полей с датами
-        for key, value in update_data.items():
-            if key.endswith('_date'):
-                if isinstance(value, str):
-                    if value == '':
-                        update_data[key] = None
-                    else:
-                        try:
-                            update_data[key] = datetime.strptime(value, '%Y-%m-%d')
-                        except ValueError:
-                            pass  # Оставляем как есть, если не удалось распарсить
+        if birth_date and diagnosis_date:
+            age = (diagnosis_date - birth_date).days // 365
+            clinical_data['age_at_diagnosis'] = age
         
-        # Пересчет возраста, если изменились даты рождения или диагноза
-        if 'birth_date' in update_data or 'initial_diagnosis_date' in update_data:
-            birth_date = update_data.get('birth_date', clinical_record.birth_date)
-            diagnosis_date = update_data.get('initial_diagnosis_date', clinical_record.initial_diagnosis_date)
-            if birth_date and diagnosis_date:
-                update_data['age_at_diagnosis'] = calculate_age(birth_date, diagnosis_date)
-        
-        for key, value in update_data.items():
-            setattr(clinical_record, key, value)
-    # if patient_update.clinical_record:
-    #     clinical_record = patient.clinical_record
-    #     update_data = patient_update.clinical_record.dict(exclude_unset=True)
-        
-    #     # Recalculate age if dates changed
-    #     if 'birth_date' in update_data or 'initial_diagnosis_date' in update_data:
-    #         birth_date = update_data.get('birth_date', clinical_record.birth_date)
-    #         diagnosis_date = update_data.get('initial_diagnosis_date', clinical_record.initial_diagnosis_date)
-    #         if birth_date and diagnosis_date:
-    #             update_data['age_at_diagnosis'] = calculate_age(birth_date, diagnosis_date)
-        
-    #     for key, value in update_data.items():
-    #         # Handle date fields - convert string to datetime if needed
-    #         if key.endswith('_date') and isinstance(value, str) and value:
-    #             try:
-    #                 value = datetime.strptime(value, '%Y-%m-%d')
-    #             except ValueError:
-    #                 pass  # Keep as is if parsing fails
-    #         setattr(clinical_record, key, value)
+        for field, value in clinical_data.items():
+            setattr(patient.clinical_record, field, value)
     
     patient.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(patient)
     
-    log_action(db, current_user.id, "update_patient", "patient", patient.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "update_patient", "patient", patient.id)
     
-    return {
-        "id": patient.id,
-        "institution_id": patient.institution_id,
-        "institution_name": patient.institution.name,
-        "created_by": patient.created_by,
-        "is_active": patient.is_active,
-        "created_at": patient.created_at,
-        "updated_at": patient.updated_at,
-        "clinical_record": patient.clinical_record
-    }
+    # Загрузка обновленных данных
+    patient = db.query(Patient).options(
+        joinedload(Patient.clinical_record),
+        joinedload(Patient.institution)
+    ).filter(Patient.id == patient.id).first()
+    
+    return PatientResponse(
+        id=patient.id,
+        institution_id=patient.institution_id,
+        institution_name=patient.institution.name if patient.institution else "",
+        created_by=patient.created_by,
+        registry_type=patient.registry_type,
+        is_active=patient.is_active,
+        created_at=patient.created_at,
+        updated_at=patient.updated_at,
+        clinical_record=ClinicalRecordResponse.from_orm(patient.clinical_record) if patient.clinical_record else None
+    )
 
-@app.delete("/api/patients/{patient_id}")
-def delete_patient(
+@app.delete("/api/patients/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_patient(
     patient_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
+    """Деактивация пациента"""
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пациент не найден"
+        )
     
-    # Check access rights
+    # Проверка прав доступа
     if current_user.role != 'admin' and patient.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен"
+        )
     
-    # Soft delete
+    # Деактивация вместо удаления
     patient.is_active = False
+    patient.updated_at = datetime.utcnow()
     db.commit()
     
-    log_action(db, current_user.id, "delete_patient", "patient", patient.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "delete_patient", "patient", patient.id)
     
-    return {"message": "Patient deleted successfully"}
+    return None
 
-# ==================== COMPLETION PERCENTAGE ====================
-
+# Эндпоинт для расчета процента заполненности данных пациента
 @app.get("/api/patients/{patient_id}/completion", response_model=CompletionResponse)
-def get_patient_completion(
+async def get_patient_completion(
     patient_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    patient = db.query(Patient).filter(Patient.id == patient_id, Patient.is_active == True).first()
+    """Получение процента заполненности данных пациента"""
+    patient = db.query(Patient).options(
+        joinedload(Patient.clinical_record)
+    ).filter(Patient.id == patient_id).first()
     
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пациент не найден"
+        )
     
-    # Check access rights
+    # Проверка прав доступа
     if current_user.role != 'admin' and patient.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещен"
+        )
     
-    return calculate_completion_percentage(patient.clinical_record)
-
-# ==================== EXCEL EXPORT ====================
-
-@app.get("/api/export/patients")
-def export_patients_excel(
-    institution_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    # Build query
-    query = db.query(Patient).filter(Patient.is_active == True)
+    if not patient.clinical_record:
+        return CompletionResponse(
+            filled_fields=0,
+            total_fields=0,
+            completion_percentage=0.0
+        )
     
-    if institution_id:
-        query = query.filter(Patient.institution_id == institution_id)
+    # Подсчет заполненных полей
+    record = patient.clinical_record
+    total_fields = 0
+    filled_fields = 0
     
-    patients = query.all()
-    
-    # Create CSV content
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # Header
-    header = [
-        'ID пациента', 'Код пациента', 'Учреждение', 'Пол', 'Дата рождения', 
-        'Возраст на момент диагноза', 'Рост', 'Вес', 'Статус курения',
-        'Дата диагноза', 'TNM стадия', 'Гистология', 'Дата диагностики ALK',
-        'Методы ALK', 'Вариант слияния ALK', 'TP53 комутация', 'TTF1 экспрессия',
-        'Дата начала алектиниба', 'Стадия на момент начала', 'ECOG',
-        'Максимальный ответ', 'Прогрессирование', 'Текущий статус',
-        'Дата последнего контакта', 'Дата заполнения', 'Заполненность'
+    # Список полей для подсчета (исключая служебные)
+    fields_to_check = [
+        'patient_code', 'gender', 'birth_date', 'height', 'weight', 'comorbidities',
+        'smoking_status', 'initial_diagnosis_date', 'tnm_stage', 'histology',
+        'alk_diagnosis_date', 'alk_methods', 'alk_fusion_variant', 'tp53_comutation',
+        'ttf1_expression', 'had_previous_therapy', 'previous_therapy_types',
+        'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
+        'metastases_sites', 'cns_metastases', 'maximum_response', 'current_status',
+        'last_contact_date'
     ]
-    writer.writerow(header)
     
-    # Data rows
-    for patient in patients:
-        cr = patient.clinical_record
-        if cr:
-            completion = calculate_completion_percentage(cr)
-            completion_str = f"{completion.filled_fields}/{completion.total_fields}"
-            
-            row = [
-                patient.id,
-                cr.patient_code or f"ID-{patient.id}",
-                patient.institution.name,
-                cr.gender or '',
-                cr.birth_date.strftime('%d-%m-%Y') if cr.birth_date else '',
-                cr.age_at_diagnosis or '',
-                cr.height or '',
-                cr.weight or '',
-                cr.smoking_status or '',
-                cr.initial_diagnosis_date.strftime('%d-%m-%Y') if cr.initial_diagnosis_date else '',
-                cr.tnm_stage or '',
-                cr.histology or '',
-                cr.alk_diagnosis_date.strftime('%d-%m-%Y') if cr.alk_diagnosis_date else '',
-                ', '.join(cr.alk_methods) if cr.alk_methods else '',
-                cr.alk_fusion_variant or '',
-                cr.tp53_comutation or '',
-                cr.ttf1_expression or '',
-                cr.alectinib_start_date.strftime('%d-%m-%Y') if cr.alectinib_start_date else '',
-                cr.stage_at_alectinib_start or '',
-                cr.ecog_at_start or '',
-                cr.maximum_response or '',
-                cr.progression_during_alectinib or '',
-                cr.current_status or '',
-                cr.last_contact_date.strftime('%d-%m-%Y') if cr.last_contact_date else '',
-                cr.date_filled.strftime('%d-%m-%Y') if cr.date_filled else '',
-                completion_str
-            ]
-        else:
-            row = [patient.id, f"ID-{patient.id}", patient.institution.name] + [''] * 23
-        
-        writer.writerow(row)
+    for field in fields_to_check:
+        total_fields += 1
+        value = getattr(record, field, None)
+        if value is not None:
+            if isinstance(value, list):
+                if len(value) > 0:
+                    filled_fields += 1
+            else:
+                filled_fields += 1
     
-    # Prepare response
-    output.seek(0)
+    completion_percentage = (filled_fields / total_fields * 100) if total_fields > 0 else 0
     
-    # Convert to bytes
-    csv_content = output.getvalue().encode('utf-8-sig')  # UTF-8 with BOM for Excel
-    csv_io = io.BytesIO(csv_content)
-    
-    return StreamingResponse(
-        io.BytesIO(csv_content),
-        media_type='text/csv',
-        headers={
-            'Content-Disposition': f'attachment; filename="patients_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
-        }
+    return CompletionResponse(
+        filled_fields=filled_fields,
+        total_fields=total_fields,
+        completion_percentage=round(completion_percentage, 2)
     )
 
-# ==================== DICTIONARIES ====================
+# ============================================================================
+# СПРАВОЧНИКИ
+# ============================================================================
 
-@app.post("/api/dictionaries", response_model=DictionaryResponse)
-def create_dictionary(
-    dictionary: DictionaryCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    new_dict = Dictionary(**dictionary.dict())
-    db.add(new_dict)
-    db.commit()
-    db.refresh(new_dict)
-    
-    log_action(db, current_user.id, "create_dictionary", "dictionary", new_dict.id)
-    
-    return new_dict
-
-@app.get("/api/dictionaries", response_model=List[DictionaryResponse])
-def list_dictionaries(
+@app.get("/api/dictionaries")
+async def get_dictionaries(
     category: Optional[str] = None,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
+    """Получение справочников"""
     query = db.query(Dictionary).filter(Dictionary.is_active == True)
     
     if category:
         query = query.filter(Dictionary.category == category)
     
     dictionaries = query.order_by(Dictionary.category, Dictionary.sort_order).all()
+    
+    # Возвращаем массив записей справочника
+    return [
+        {
+            "id": d.id,
+            "category": d.category,
+            "code": d.code,
+            "value_ru": d.value_ru,
+            "sort_order": d.sort_order
+        }
+        for d in dictionaries
+    ]
+
+# FIX #1: Добавлен новый endpoint для получения списка категорий справочников
+@app.get("/api/dictionaries/categories")
+async def get_dictionary_categories(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Получение списка уникальных категорий справочников"""
+    categories = db.query(Dictionary.category).filter(
+        Dictionary.is_active == True
+    ).distinct().all()
+    
+    # Преобразуем результат в список строк
+    return [category[0] for category in categories]
+
+@app.get("/api/dictionaries/all", response_model=List[DictionaryResponse])
+async def get_all_dictionaries(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Получение всех записей справочников (для админов)"""
+    dictionaries = db.query(Dictionary).order_by(
+        Dictionary.category, 
+        Dictionary.sort_order
+    ).all()
     return dictionaries
 
-@app.get("/api/dictionaries/categories")
-def list_dictionary_categories(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+@app.post("/api/dictionaries", response_model=DictionaryResponse, status_code=status.HTTP_201_CREATED)
+async def create_dictionary(
+    dict_data: DictionaryCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
-    categories = db.query(Dictionary.category).distinct().all()
-    return [cat[0] for cat in categories]
-
-@app.put("/api/dictionaries/{dictionary_id}", response_model=DictionaryResponse)
-def update_dictionary(
-    dictionary_id: int,
-    dictionary_update: DictionaryUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    dictionary = db.query(Dictionary).filter(Dictionary.id == dictionary_id).first()
-    if not dictionary:
-        raise HTTPException(status_code=404, detail="Dictionary entry not found")
+    """Создание записи в справочнике (только для админов)"""
+    # Проверка уникальности
+    existing = db.query(Dictionary).filter(
+        Dictionary.category == dict_data.category,
+        Dictionary.code == dict_data.code
+    ).first()
     
-    update_data = dictionary_update.dict(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(dictionary, key, value)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Запись с таким кодом уже существует в данной категории"
+        )
+    
+    new_dict = Dictionary(**dict_data.dict())
+    db.add(new_dict)
+    db.commit()
+    db.refresh(new_dict)
+    
+    # Аудит
+    create_audit_log(db, current_user.id, "create_dictionary", "dictionary", new_dict.id)
+    
+    return new_dict
+
+@app.put("/api/dictionaries/{dict_id}", response_model=DictionaryResponse)
+async def update_dictionary(
+    dict_id: int,
+    dict_data: DictionaryUpdate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Обновление записи в справочнике (только для админов)"""
+    dict_item = db.query(Dictionary).filter(Dictionary.id == dict_id).first()
+    
+    if not dict_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Запись не найдена"
+        )
+    
+    # Обновление полей
+    for field, value in dict_data.dict(exclude_unset=True).items():
+        setattr(dict_item, field, value)
     
     db.commit()
-    db.refresh(dictionary)
+    db.refresh(dict_item)
     
-    log_action(db, current_user.id, "update_dictionary", "dictionary", dictionary.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "update_dictionary", "dictionary", dict_id)
     
-    return dictionary
+    return dict_item
 
-@app.delete("/api/dictionaries/{dictionary_id}")
-def delete_dictionary(
-    dictionary_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+@app.delete("/api/dictionaries/{dict_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_dictionary(
+    dict_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
 ):
-    dictionary = db.query(Dictionary).filter(Dictionary.id == dictionary_id).first()
-    if not dictionary:
-        raise HTTPException(status_code=404, detail="Dictionary entry not found")
+    """Деактивация записи в справочнике (только для админов)"""
+    dict_item = db.query(Dictionary).filter(Dictionary.id == dict_id).first()
     
-    # Soft delete
-    dictionary.is_active = False
+    if not dict_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Запись не найдена"
+        )
+    
+    dict_item.is_active = False
     db.commit()
     
-    log_action(db, current_user.id, "delete_dictionary", "dictionary", dictionary.id)
+    # Аудит
+    create_audit_log(db, current_user.id, "delete_dictionary", "dictionary", dict_id)
     
-    return {"message": "Dictionary entry deleted successfully"}
+    return None
 
-# ==================== ANALYTICS ====================
+# ============================================================================
+# TREATMENT SCHEMAS (for Therapy Builder)
+# ============================================================================
 
-@app.get("/api/analytics", response_model=List[AnalyticsResponse])
-def get_analytics(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
+@app.get("/api/treatment-schemas/{registry_type}")
+async def get_treatment_schemas(
+    registry_type: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    # Get all institutions
-    institutions = db.query(Institution).filter(Institution.is_active == True).all()
+    """
+    Получение схем лечения для конкретного типа регистра (ALK или ROS1)
+    Returns treatment options for building therapy plans
+    """
+    if registry_type.upper() not in ['ALK', 'ROS1']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный тип регистра. Допустимые значения: ALK, ROS1"
+        )
     
-    analytics_data = []
+    category = f"treatment_schemas_{registry_type.lower()}"
     
-    for inst in institutions:
-        # Count patients
-        patient_count = db.query(Patient).filter(
-            Patient.institution_id == inst.id,
-            Patient.is_active == True
-        ).count()
-        
-        # Get all clinical records for this institution
-        records = db.query(ClinicalRecord).join(Patient).filter(
-            Patient.institution_id == inst.id,
-            Patient.is_active == True
-        ).all()
-        
-        # Calculate field completion rates
-        if records:
-            total_records = len(records)
-            field_completion = {}
-            
-            # List of important fields to track
-            important_fields = [
-                'gender', 'birth_date', 'height', 'weight',
-                'initial_diagnosis_date', 'tnm_stage', 'histology',
-                'alk_diagnosis_date', 'alk_methods',
-                'alectinib_start_date', 'ecog_at_start',
-                'current_status', 'last_contact_date'
-            ]
-            
-            for field in important_fields:
-                filled_count = sum(1 for r in records if getattr(r, field) is not None)
-                field_completion[field] = round((filled_count / total_records) * 100, 1)
-        else:
-            field_completion = {}
-        
-        analytics_data.append({
-            "institution_id": inst.id,
-            "institution_name": inst.name,
-            "total_patients": patient_count,
-            "field_completion_rates": field_completion,
-            "last_updated": inst.updated_at
-        })
-    
-    return analytics_data
-
-# ==================== AUDIT LOG ====================
-
-@app.get("/api/audit-logs", response_model=List[AuditLogResponse])
-def get_audit_logs(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin)
-):
-    logs = db.query(AuditLog).order_by(AuditLog.timestamp.desc()).offset(skip).limit(limit).all()
+    schemas = db.query(Dictionary).filter(
+        Dictionary.category == category,
+        Dictionary.is_active == True
+    ).order_by(Dictionary.sort_order).all()
     
     return [
         {
-            "id": log.id,
-            "user_id": log.user_id,
-            "username": log.user.username,
-            "action": log.action,
-            "timestamp": log.timestamp,
-            "record_type": log.record_type,
-            "record_id": log.record_id,
-            "details": log.details
+            "id": s.id,
+            "code": s.code,
+            "value_ru": s.value_ru,
+            "sort_order": s.sort_order
         }
-        for log in logs
+        for s in schemas
     ]
 
-# ==================== HEALTH CHECK ====================
+@app.get("/api/therapies/{registry_type}")
+async def get_therapies(
+    registry_type: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение доступных терапий для конкретного типа регистра
+    Alias endpoint for treatment schemas
+    """
+    return await get_treatment_schemas(registry_type, current_user, db)
+
+@app.get("/api/therapy-lines")
+async def get_therapy_lines(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение линий терапии (1-я, 2-я, 3-я и т.д.)
+    Generic for all registry types
+    """
+    lines = db.query(Dictionary).filter(
+        Dictionary.category == "therapy_line",
+        Dictionary.is_active == True
+    ).order_by(Dictionary.sort_order).all()
+    
+    return [
+        {
+            "id": l.id,
+            "code": l.code,
+            "value_ru": l.value_ru,
+            "sort_order": l.sort_order
+        }
+        for l in lines
+    ]
+
+@app.get("/api/diagnostic-methods/{registry_type}")
+async def get_diagnostic_methods(
+    registry_type: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение методов диагностики для конкретного типа регистра (ALK или ROS1)
+    """
+    if registry_type.upper() not in ['ALK', 'ROS1']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный тип регистра. Допустимые значения: ALK, ROS1"
+        )
+    
+    category = f"{registry_type.lower()}_methods"
+    
+    methods = db.query(Dictionary).filter(
+        Dictionary.category == category,
+        Dictionary.is_active == True
+    ).order_by(Dictionary.sort_order).all()
+    
+    return [
+        {
+            "id": m.id,
+            "code": m.code,
+            "value_ru": m.value_ru,
+            "sort_order": m.sort_order
+        }
+        for m in methods
+    ]
+
+@app.get("/api/fusion-variants/{registry_type}")
+async def get_fusion_variants(
+    registry_type: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Получение вариантов фузии для конкретного типа регистра (ALK или ROS1)
+    """
+    if registry_type.upper() not in ['ALK', 'ROS1']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверный тип регистра. Допустимые значения: ALK, ROS1"
+        )
+    
+    category = f"{registry_type.lower()}_fusion_variant"
+    
+    variants = db.query(Dictionary).filter(
+        Dictionary.category == category,
+        Dictionary.is_active == True
+    ).order_by(Dictionary.sort_order).all()
+    
+    return [
+        {
+            "id": v.id,
+            "code": v.code,
+            "value_ru": v.value_ru,
+            "sort_order": v.sort_order
+        }
+        for v in variants
+    ]
+
+# ============================================================================
+# АНАЛИТИКА
+# ============================================================================
+
+@app.get("/api/analytics")
+async def get_analytics(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Получение аналитики по заполненности данных (только для админов)"""
+    
+    # Общая статистика по учреждениям
+    institutions = db.query(Institution).filter(Institution.is_active == True).all()
+    
+    analytics = []
+    
+    for institution in institutions:
+        # Количество пациентов
+        total_patients = db.query(Patient).filter(
+            Patient.institution_id == institution.id,
+            Patient.is_active == True
+        ).count()
+        
+        # Статистика по заполненности полей
+        patients = db.query(Patient).options(
+            joinedload(Patient.clinical_record)
+        ).filter(
+            Patient.institution_id == institution.id,
+            Patient.is_active == True
+        ).all()
+        
+        field_completion = {}
+        
+        if total_patients > 0:
+            # Список ключевых полей
+            key_fields = [
+                'patient_code', 'gender', 'birth_date', 'initial_diagnosis_date',
+                'alk_diagnosis_date', 'alectinib_start_date', 'current_status'
+            ]
+            
+            for field in key_fields:
+                filled_count = sum(
+                    1 for p in patients 
+                    if p.clinical_record and getattr(p.clinical_record, field, None) is not None
+                )
+                field_completion[field] = round((filled_count / total_patients) * 100, 2)
+        
+        analytics.append({
+            "institution_id": institution.id,
+            "institution_name": institution.name,
+            "total_patients": total_patients,
+            "field_completion_rates": field_completion
+        })
+    
+    return analytics
+
+# ============================================================================
+# ЖУРНАЛ АУДИТА
+# ============================================================================
+
+@app.get("/api/audit-logs", response_model=List[AuditLogResponse])
+async def get_audit_logs(
+    limit: int = 100,
+    offset: int = 0,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Получение журнала аудита (только для админов)"""
+    logs = db.query(AuditLog).options(
+        joinedload(AuditLog.user)
+    ).order_by(
+        AuditLog.timestamp.desc()
+    ).limit(limit).offset(offset).all()
+    
+    return [
+        AuditLogResponse(
+            id=log.id,
+            user_id=log.user_id,
+            username=log.user.username if log.user else "Unknown",
+            action=log.action,
+            timestamp=log.timestamp,
+            record_type=log.record_type,
+            record_id=log.record_id,
+            details=log.details
+        ) for log in logs
+    ]
+
+# ============================================================================
+# ЗДОРОВЬЕ ПРИЛОЖЕНИЯ
+# ============================================================================
 
 @app.get("/api/health")
-def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
+async def health_check():
+    """Проверка состояния API"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0"
+    }
 
+@app.get("/")
+async def root():
+    """Корневой эндпоинт"""
+    return {
+        "message": "Alectinib Registry API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "redoc": "/redoc"
+    }
+
+# Запуск приложения
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    port = int(os.getenv("PORT", 5000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
