@@ -113,3 +113,80 @@
   border-left: 3px solid #f44336;
   border-right: 3px solid #1976d2;
 }
+
+/* Grouped Navigation Styles (for ROS1) */
+.sidebar-nav-grouped {
+  padding: 10px 0;
+}
+
+.nav-group {
+  margin-bottom: 8px;
+}
+
+.nav-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 12px 20px;
+  border: none;
+  background: #f5f5f5;
+  color: #333;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.nav-group-header:hover {
+  background: #e5e5e5;
+}
+
+.nav-group-title {
+  flex: 1;
+}
+
+.nav-group-icon {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+  color: #666;
+}
+
+.nav-group-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.nav-group-icon.expanded {
+  transform: rotate(0deg);
+}
+
+.nav-group-sections {
+  background: #fafafa;
+}
+
+.nav-item-grouped {
+  padding-left: 40px;
+  border-left: 3px solid transparent;
+}
+
+.nav-item-grouped:hover {
+  background: #f0f0f0;
+}
+
+.nav-item-grouped.active {
+  background: #e3f2fd;
+  color: #1976d2;
+  border-left: 3px solid #1976d2;
+}
+
+.nav-item-grouped .nav-icon {
+  margin-right: 10px;
+  font-size: 14px;
+}
+
+.nav-item-grouped .nav-label {
+  font-size: 13px;
+}

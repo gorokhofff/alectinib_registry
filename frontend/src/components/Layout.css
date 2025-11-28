@@ -1,4 +1,3 @@
-
 .layout {
   min-height: 100vh;
   display: flex;
@@ -21,11 +20,30 @@
   height: 64px;
 }
 
+.header-title-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .header-title {
   font-size: 20px;
   font-weight: 600;
   color: var(--primary-color);
   margin: 0;
+}
+
+.registry-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: white;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .nav {

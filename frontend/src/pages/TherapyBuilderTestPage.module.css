@@ -1,0 +1,227 @@
+/* Страница */
+.page {
+  min-height: 100vh;
+  background-color: #f9fafb;
+  padding: 40px 20px;
+}
+
+/* Заголовок страницы */
+.header {
+  max-width: 1200px;
+  margin: 0 auto 40px;
+  text-align: center;
+}
+
+.header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  font-size: 16px;
+  color: #6b7280;
+}
+
+/* Контент */
+.content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Секция */
+.section {
+  background-color: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 32px;
+  margin-bottom: 32px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.section h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 12px;
+}
+
+.description {
+  font-size: 14px;
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+/* Демо область */
+.demo {
+  padding: 24px;
+  background-color: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+/* Вывод данных */
+.output {
+  padding: 20px;
+  background-color: #1f2937;
+  border-radius: 8px;
+}
+
+.output h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.output pre {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  color: #10b981;
+  margin: 0;
+  padding: 12px;
+  background-color: #111827;
+  border-radius: 6px;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+.errors {
+  color: #fca5a5 !important;
+}
+
+/* Документация API */
+.apiDocs {
+  padding: 20px;
+  background-color: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+}
+
+.apiDocs h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #92400e;
+  margin-top: 20px;
+  margin-bottom: 12px;
+}
+
+.apiDocs h3:first-child {
+  margin-top: 0;
+}
+
+.apiDocs ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.apiDocs ul li {
+  padding: 12px;
+  margin-bottom: 8px;
+  background-color: white;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+}
+
+.apiDocs code {
+  display: inline-block;
+  padding: 2px 6px;
+  background-color: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.apiDocs pre {
+  margin: 8px 0 0 0;
+  padding: 8px;
+  background-color: #fefce8;
+  border: 1px solid #fde68a;
+  border-radius: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  color: #78350f;
+  overflow-x: auto;
+}
+
+.apiDocs ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.apiDocs ol li {
+  padding: 8px 0;
+  margin-bottom: 8px;
+  background: none;
+  border: none;
+}
+
+.apiDocs ol li strong {
+  color: #92400e;
+}
+
+/* Адаптивный дизайн */
+@media (max-width: 768px) {
+  .page {
+    padding: 20px 12px;
+  }
+
+  .header h1 {
+    font-size: 24px;
+  }
+
+  .subtitle {
+    font-size: 14px;
+  }
+
+  .section {
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .section h2 {
+    font-size: 20px;
+  }
+
+  .demo {
+    padding: 16px;
+  }
+
+  .output {
+    padding: 16px;
+  }
+
+  .output pre {
+    font-size: 11px;
+  }
+
+  .apiDocs {
+    padding: 16px;
+  }
+
+  .apiDocs code {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header h1 {
+    font-size: 20px;
+  }
+
+  .section {
+    padding: 16px;
+  }
+
+  .section h2 {
+    font-size: 18px;
+  }
+}

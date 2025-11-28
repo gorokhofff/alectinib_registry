@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react'
 import { dictionaryService } from '../services/dictionaryService'
 import './DictionariesPage.css'

@@ -1,0 +1,230 @@
+.selectRegistryPage {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.container {
+  max-width: 1200px;
+  width: 100%;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 60px;
+  color: white;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.subtitle {
+  font-size: 1.25rem;
+  margin: 0;
+  opacity: 0.95;
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 40px;
+  margin-bottom: 40px;
+}
+
+.card {
+  background: white;
+  border-radius: 24px;
+  padding: 48px 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  transition: height 0.3s ease;
+}
+
+.cardAlk::before {
+  background: #2563eb;
+}
+
+.cardRos1::before {
+  background: #16a34a;
+}
+
+.card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.card:hover::before {
+  height: 100%;
+  opacity: 0.05;
+}
+
+.card:focus {
+  outline: 3px solid #667eea;
+  outline-offset: 4px;
+}
+
+.cardIcon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.cardAlk .cardIcon {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.cardRos1 .cardIcon {
+  background: rgba(22, 163, 74, 0.1);
+  color: #16a34a;
+}
+
+.card:hover .cardIcon {
+  transform: scale(1.1) rotate(5deg);
+}
+
+.cardIcon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.cardTitle {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  color: #1e293b;
+}
+
+.cardAlk .cardTitle {
+  color: #2563eb;
+}
+
+.cardRos1 .cardTitle {
+  color: #16a34a;
+}
+
+.cardDescription {
+  font-size: 1.125rem;
+  color: #64748b;
+  margin: 0 0 32px 0;
+  line-height: 1.6;
+}
+
+.cardButton {
+  display: inline-block;
+  padding: 14px 32px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.cardAlk .cardButton {
+  background: #2563eb;
+}
+
+.cardRos1 .cardButton {
+  background: #16a34a;
+}
+
+.card:hover .cardButton {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.cardAlk:hover .cardButton {
+  background: #1d4ed8;
+}
+
+.cardRos1:hover .cardButton {
+  background: #15803d;
+}
+
+.footer {
+  text-align: center;
+  color: white;
+  opacity: 0.9;
+}
+
+.footer p {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* Адаптивный дизайн */
+@media (max-width: 768px) {
+  .title {
+    font-size: 2rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+  }
+
+  .cardsGrid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .card {
+    padding: 32px 24px;
+  }
+
+  .cardTitle {
+    font-size: 1.5rem;
+  }
+
+  .cardDescription {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .selectRegistryPage {
+    padding: 12px;
+  }
+
+  .header {
+    margin-bottom: 40px;
+  }
+
+  .title {
+    font-size: 1.75rem;
+  }
+
+  .cardIcon {
+    width: 64px;
+    height: 64px;
+  }
+
+  .cardIcon svg {
+    width: 36px;
+    height: 36px;
+  }
+}

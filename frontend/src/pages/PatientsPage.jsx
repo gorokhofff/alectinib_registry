@@ -1,10 +1,12 @@
-
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { patientService } from '../services/patientService'
+import { useRegistry } from '../contexts/RegistryContext'
 import './PatientsPage.css'
 
 function PatientsPage({ user }) {
+  const navigate = useNavigate()
+  const { registryType } = useRegistry()
   const [patients, setPatients] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -15,13 +17,22 @@ function PatientsPage({ user }) {
   const [searchFilters, setSearchFilters] = useState({
     patient_code: '',
     birth_date: '',
-    institution_id: ''
+    institution_id: '',
+    registry_type: registryType // Добавляем фильтр по типу регистра
   })
 
   useEffect(() => {
     loadPatients()
     loadInstitutions()
   }, [])
+
+  // Автоматически фильтруем пациентов при изменении registryType
+  useEffect(() => {
+    if (registryType) {
+      setSearchFilters(prev => ({ ...prev, registry_type: registryType }))
+      loadPatients({ ...searchFilters, registry_type: registryType })
+    }
+  }, [registryType])
 
   const loadInstitutions = async () => {
     try {
@@ -160,11 +171,18 @@ function PatientsPage({ user }) {
     return <div className="alert alert-error">{error}</div>
   }
 
+  const handleChangeRegistry = () => {
+    navigate('/select-registry')
+  }
+
   return (
     <div className="patients-page">
       <div className="page-header">
         <h2>Список пациентов</h2>
         <div className="header-actions">
+          <button onClick={handleChangeRegistry} className="btn btn-secondary">
+            🔄 Сменить регистр
+          </button>
           {user.role === 'admin' && (
             <button onClick={handleExportExcel} className="btn btn-info">
               📊 Экспорт в Excel

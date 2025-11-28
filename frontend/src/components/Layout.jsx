@@ -1,18 +1,37 @@
-
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { useRegistry } from '../contexts/RegistryContext'
 import './Layout.css'
 
 function Layout({ user, onLogout, children }) {
   const location = useLocation()
+  const { registryType, getRegistryColor, getRegistryName } = useRegistry()
 
   const isActive = (path) => location.pathname === path
+
+  // Динамически обновляем CSS переменную --primary-color
+  useEffect(() => {
+    if (registryType) {
+      const primaryColor = getRegistryColor()
+      document.documentElement.style.setProperty('--primary-color', primaryColor)
+    }
+  }, [registryType, getRegistryColor])
 
   return (
     <div className="layout">
       <header className="header">
         <div className="header-content">
-          <h1 className="header-title">Регистр Алектиниб</h1>
+          <div className="header-title-container">
+            <h1 className="header-title">{getRegistryName()}</h1>
+            {registryType && (
+              <span 
+                className="registry-badge"
+                style={{ backgroundColor: getRegistryColor() }}
+              >
+                {registryType}
+              </span>
+            )}
+          </div>
           <nav className="nav">
             <Link 
               to="/patients" 

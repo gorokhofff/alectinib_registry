@@ -1,4 +1,3 @@
-
 .patient-form-page-new {
   min-height: 100vh;
   background: #f5f5f5;
@@ -268,4 +267,202 @@
 
 .info-value.status-lost_to_followup {
   color: #ffc107;
+}
+
+
+
+/* ====== ROS1 SPECIFIC STYLES ====== */
+
+/* Subsections for ROS1 radical treatment */
+.subsection {
+  margin-top: 1.5rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-color, #16a34a);
+}
+
+.subsection h4 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.subsection:first-of-type {
+  margin-top: 1rem;
+}
+
+/* Therapy items for perioperative therapy */
+.therapy-item {
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.therapy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.therapy-header h5 {
+  margin: 0;
+  font-size: 1rem;
+  color: #495057;
+  font-weight: 600;
+}
+
+.btn-remove {
+  padding: 0.375rem 0.75rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-remove:hover {
+  background: #c82333;
+}
+
+/* Grid system enhancements */
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Form help text */
+.form-help {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-style: italic;
+}
+
+/* Enhanced button styles */
+.btn-secondary {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(108, 117, 125, 0.3);
+}
+
+.btn-secondary:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Registry-specific color overrides */
+[data-registry="ROS1"] .subsection {
+  border-left-color: #16a34a;
+}
+
+[data-registry="ALK"] .subsection {
+  border-left-color: #2563eb;
+}
+
+/* Validation error styles for ROS1 */
+.validation-error {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #f8d7da;
+  border-left: 3px solid #dc3545;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: #721c24;
+}
+
+.validation-error::before {
+  content: '⚠️ ';
+  font-weight: bold;
+}
+
+/* Responsive adjustments for ROS1 sections */
+@media (max-width: 992px) {
+  .subsection {
+    padding: 1rem;
+  }
+
+  .therapy-item {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .subsection {
+    padding: 0.75rem;
+  }
+
+  .therapy-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .btn-remove {
+    width: 100%;
+  }
+}
+
+/* Enhanced checkbox styles for ROS1 */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  border-radius: 4px;
+}
+
+.checkbox-label:hover {
+  background: #f8f9fa;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin-right: 0.5rem;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.checkbox-label span {
+  font-size: 0.9375rem;
+  color: #333;
+}
+
+/* Required field indicator */
+.form-label .required {
+  color: #dc3545;
+  margin-left: 0.25rem;
 }

@@ -1,16 +1,19 @@
-
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { patientService } from '../services/patientService'
 import { dictionaryService } from '../services/dictionaryService'
+import { useRegistry } from '../contexts/RegistryContext'
 import PatientFormSidebar from '../components/PatientFormSidebar'
 import DateValidation from '../components/DateValidation'
 import TNMSelect from '../components/TNMSelect'
+import TherapyBuilder from '../components/TherapyBuilder'
+import TherapyLinesTable from '../components/TherapyLinesTable'
 import './PatientFormPageNew.css'
 
 function PatientFormPageNew({ user }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { registryType } = useRegistry()
   const isEdit = !!id
 
   const [loading, setLoading] = useState(false)
@@ -20,8 +23,8 @@ function PatientFormPageNew({ user }) {
   const [currentSection, setCurrentSection] = useState('current-status')
   const [autoSaveTimer, setAutoSaveTimer] = useState(null)
   
-  // Form sections definition (merged sections as requested)
-  const sections = [
+  // Form sections definition - разные для ALK и ROS1
+  const alkSections = [
     { id: 'current-status', title: 'Текущий статус', icon: '📊' },
     { id: 'patient-basic', title: 'Код пациента и базовые данные', icon: '👤' },
     { id: 'diagnosis-alk', title: 'Диагноз и ALK диагностика', icon: '🔍' },
@@ -29,6 +32,40 @@ function PatientFormPageNew({ user }) {
     { id: 'alectinib-complete', title: 'Лечение алектинибом', icon: '🎯' },
     { id: 'next-line', title: 'Следующая линия', icon: '➡️' }
   ]
+
+  // ROS1 структура с группировкой
+  const ros1Structure = [
+    {
+      groupTitle: 'Основная информация',
+      sections: [
+        { id: 'current-status', title: 'Текущий статус', icon: '📊' },
+        { id: 'patient-basic', title: 'Базовые данные', icon: '👤' }
+      ]
+    },
+    {
+      groupTitle: 'Диагностика',
+      sections: [
+        { id: 'diagnosis-ros1', title: 'Диагноз и ROS1', icon: '🔍' },
+        { id: 'pdl1-status', title: 'PD-L1 статус', icon: '🧬' }
+      ]
+    },
+    {
+      groupTitle: 'Радикальное лечение',
+      sections: [
+        { id: 'radical-treatment', title: 'Радикальное лечение', icon: '⚕️' }
+      ]
+    },
+    {
+      groupTitle: 'Метастатическая фаза',
+      sections: [
+        { id: 'metastatic-therapy', title: 'Линии терапии', icon: '💊' }
+      ]
+    }
+  ]
+
+  const sections = registryType === 'ROS1' 
+    ? ros1Structure.flatMap(g => g.sections) 
+    : alkSections
   
   // Инициализация формы с новыми полями
   const [formData, setFormData] = useState({
@@ -110,6 +147,30 @@ function PatientFormPageNew({ user }) {
     progression_on_next_line_date: '',
     next_line_end_date: '',
     total_lines_after_alectinib: '',
+
+    // ====== ROS1 SPECIFIC FIELDS ======
+    // ROS1 диагностика
+    ros1_fusion_variant: '',
+    pdl1_status: '',
+    pdl1_tps: '',
+
+    // Радикальное лечение
+    radical_treatment_conducted: false,
+    radical_surgery_conducted: false,
+    radical_surgery_date: '',
+    radical_crt_conducted: false,
+    radical_crt_start_date: '',
+    radical_crt_end_date: '',
+    radical_crt_consolidation: false,
+    radical_crt_consolidation_drug: '',
+    radical_crt_consolidation_end_date: '',
+    radical_perioperative_therapy: [], // JSON: [{type: 'NEOADJUVANT'/'ADJUVANT', therapy: TherapyBuilder, start_date, end_date}]
+    radical_treatment_outcome: '',
+    relapse_date: '',
+
+    // Метастатическая фаза
+    metastatic_diagnosis_date: '',
+    metastatic_therapy_lines: [] // JSON: [{line_number, therapy: TherapyBuilder, start_date, end_date, response, stop_reason}]
   })
 
   useEffect(() => {
@@ -147,13 +208,33 @@ function PatientFormPageNew({ user }) {
           'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
           'alectinib_start_date', 'earliest_response_date', 'progression_date',
           'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
-          'next_line_end_date', 'last_contact_date', 'date_filled'
+          'next_line_end_date', 'last_contact_date', 'date_filled',
+          // ROS1 dates
+          'radical_surgery_date', 'radical_crt_start_date', 'radical_crt_end_date',
+          'radical_crt_consolidation_end_date', 'relapse_date', 'metastatic_diagnosis_date'
         ]
         dateFields.forEach(field => {
           if (cr[field]) {
             cr[field] = cr[field].split('T')[0]
           }
         })
+
+        // Parse JSON fields (ROS1)
+        if (cr.radical_perioperative_therapy && typeof cr.radical_perioperative_therapy === 'string') {
+          try {
+            cr.radical_perioperative_therapy = JSON.parse(cr.radical_perioperative_therapy)
+          } catch (e) {
+            cr.radical_perioperative_therapy = []
+          }
+        }
+        if (cr.metastatic_therapy_lines && typeof cr.metastatic_therapy_lines === 'string') {
+          try {
+            cr.metastatic_therapy_lines = JSON.parse(cr.metastatic_therapy_lines)
+          } catch (e) {
+            cr.metastatic_therapy_lines = []
+          }
+        }
+
         setFormData(cr)
       }
     } catch (err) {
@@ -261,6 +342,15 @@ function PatientFormPageNew({ user }) {
   setError('')
 
   try {
+    // Validate ROS1-specific fields
+    if (registryType === 'ROS1') {
+      const validationErrors = validateROS1Fields()
+      if (validationErrors.length > 0) {
+        setError(validationErrors.join('; '))
+        setSaving(false)
+        return
+      }
+    }
     // Prepare dates - ensure they are in correct format
     const preparedData = { ...formData }
     
@@ -270,7 +360,10 @@ function PatientFormPageNew({ user }) {
       'alk_diagnosis_date', 'previous_therapy_start_date', 'previous_therapy_end_date',
       'alectinib_start_date', 'earliest_response_date', 'progression_date',
       'alectinib_end_date', 'next_line_start_date', 'progression_on_next_line_date',
-      'next_line_end_date', 'last_contact_date', 'date_filled'
+      'next_line_end_date', 'last_contact_date', 'date_filled',
+      // ROS1 dates
+      'radical_surgery_date', 'radical_crt_start_date', 'radical_crt_end_date',
+      'radical_crt_consolidation_end_date', 'relapse_date', 'metastatic_diagnosis_date'
     ]
     
     dateFields.forEach(field => {
@@ -296,7 +389,7 @@ function PatientFormPageNew({ user }) {
     })
     
     // Convert numeric strings to numbers
-    const numericFields = ['height', 'weight', 'ecog_at_start', 'interruption_duration_months', 'total_lines_after_alectinib']
+    const numericFields = ['height', 'weight', 'ecog_at_start', 'interruption_duration_months', 'total_lines_after_alectinib', 'pdl1_tps']
     numericFields.forEach(field => {
       if (preparedData[field] === '') {
         preparedData[field] = null
@@ -305,8 +398,21 @@ function PatientFormPageNew({ user }) {
       }
     })
 
+    // Stringify JSON fields (ROS1)
+    if (preparedData.radical_perioperative_therapy && Array.isArray(preparedData.radical_perioperative_therapy)) {
+      preparedData.radical_perioperative_therapy = JSON.stringify(preparedData.radical_perioperative_therapy)
+    }
+    if (preparedData.metastatic_therapy_lines && Array.isArray(preparedData.metastatic_therapy_lines)) {
+      preparedData.metastatic_therapy_lines = JSON.stringify(preparedData.metastatic_therapy_lines)
+    }
+
     const payload = {
       clinical_record: preparedData
+    }
+
+    // Добавляем registry_type при создании нового пациента
+    if (!isEdit && registryType) {
+      payload.registry_type = registryType
     }
 
     console.log('Sending payload:', JSON.stringify(payload, null, 2)) // Debug log
@@ -370,7 +476,58 @@ function PatientFormPageNew({ user }) {
         compareWith: 'alectinib_start_date',
         message: 'Дата окончания не может быть раньше даты начала'
       }
+    ],
+    // ROS1 validation rules
+    radical_crt_end_date: [
+      {
+        type: 'before',
+        compareWith: 'radical_crt_start_date',
+        message: 'Дата окончания ХЛТ не может быть раньше даты начала'
+      }
+    ],
+    relapse_date: [
+      {
+        type: 'before',
+        compareWith: 'radical_surgery_date',
+        message: 'Дата рецидива должна быть после радикального лечения'
+      }
+    ],
+    metastatic_diagnosis_date: [
+      {
+        type: 'before',
+        compareWith: 'initial_diagnosis_date',
+        message: 'Дата метастатической фазы не может быть раньше первоначального диагноза'
+      }
     ]
+  }
+
+  // ROS1 validation function
+  const validateROS1Fields = () => {
+    const errors = []
+
+    // Валидация: если radical_treatment_outcome === RELAPSE, то relapse_date обязательна
+    if (formData.radical_treatment_outcome === 'RELAPSE' && !formData.relapse_date) {
+      errors.push('При исходе "Рецидив" необходимо указать дату рецидива')
+    }
+
+    // Валидация: если pdl1_status !== UNKNOWN, то pdl1_tps обязательна
+    if (formData.pdl1_status && formData.pdl1_status !== 'UNKNOWN' && !formData.pdl1_tps) {
+      errors.push('При указанном PD-L1 статусе необходимо указать PD-L1 TPS')
+    }
+
+    // Валидация: дата начала 1-й линии >= relapse_date или metastatic_diagnosis_date
+    if (formData.metastatic_therapy_lines && formData.metastatic_therapy_lines.length > 0) {
+      const firstLine = formData.metastatic_therapy_lines[0]
+      const minDate = formData.relapse_date || formData.metastatic_diagnosis_date
+      
+      if (firstLine.start_date && minDate) {
+        if (new Date(firstLine.start_date) < new Date(minDate)) {
+          errors.push('Дата начала первой линии терапии не может быть раньше даты рецидива или метастатической фазы')
+        }
+      }
+    }
+
+    return errors
   }
 
     const renderMultiSelect = (name, category, label) => {
@@ -451,6 +608,10 @@ function PatientFormPageNew({ user }) {
   }
 
   const renderSection = () => {
+    // Условный рендеринг на основе registryType
+    const isROS1 = registryType === 'ROS1'
+    const isALK = registryType === 'ALK'
+
     switch(currentSection) {
       case 'current-status':
         return (
@@ -564,6 +725,9 @@ function PatientFormPageNew({ user }) {
         )
 
       case 'diagnosis-alk':
+        // Только для ALK регистра
+        if (!isALK) return null
+        
         return (
           <>
             <div className="card">
@@ -626,6 +790,334 @@ function PatientFormPageNew({ user }) {
               {renderMultiSelect('alk_methods', 'alk_methods', 'Метод диагностики')}
             </div>
           </>
+        )
+
+      // ====== ROS1 SECTIONS ======
+      case 'diagnosis-ros1':
+        // Только для ROS1 регистра
+        if (!isROS1) return null
+        
+        return (
+          <div className="card">
+            <h3>Диагноз и ROS1 диагностика</h3>
+            
+            <div className="grid grid-2">
+              <DateValidation
+                name="initial_diagnosis_date"
+                label="Дата первоначального диагноза"
+                value={formData.initial_diagnosis_date}
+                onChange={handleChange}
+                tooltip="Используйте 15 число месяца, если точная дата неизвестна"
+              />
+
+              <TNMSelect
+                name="tnm_stage"
+                label="Стадия TNM (8-я классификация)"
+                value={formData.tnm_stage}
+                onChange={handleChange}
+                options={dictionaries.tnm_stage || []}
+              />
+
+              {renderSelect('histology', 'histology', 'Гистология')}
+              {renderSelect('ros1_fusion_variant', 'ros1_fusion_variant', 'Вариант ROS1-фузии')}
+              {renderSelect('tp53_comutation', 'yes_no_unknown', 'Ко-мутация TP53')}
+              {renderSelect('ttf1_expression', 'yes_no_unknown', 'Экспрессия TTF-1')}
+            </div>
+          </div>
+        )
+
+      case 'pdl1-status':
+        // Только для ROS1 регистра
+        if (!isROS1) return null
+        
+        return (
+          <div className="card">
+            <h3>PD-L1 статус</h3>
+            
+            <div className="grid grid-2">
+              {renderSelect('pdl1_status', 'pdl1_status', 'PD-L1 статус')}
+              
+              {formData.pdl1_status && formData.pdl1_status !== 'UNKNOWN' && (
+                <div className="form-group">
+                  <label className="form-label">PD-L1 TPS (%) *</label>
+                  <input
+                    type="number"
+                    name="pdl1_tps"
+                    value={formData.pdl1_tps}
+                    onChange={handleChange}
+                    className="form-input"
+                    min="0"
+                    max="100"
+                    required
+                  />
+                  <small className="form-help">Введите процент TPS (0-100)</small>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+
+      case 'radical-treatment':
+        // Только для ROS1 регистра
+        if (!isROS1) return null
+        
+        return (
+          <>
+            <div className="card">
+              <h3>Радикальное лечение</h3>
+              
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    name="radical_treatment_conducted"
+                    checked={formData.radical_treatment_conducted}
+                    onChange={handleChange}
+                  />
+                  <span>Проводилось радикальное лечение</span>
+                </label>
+              </div>
+
+              {formData.radical_treatment_conducted && (
+                <>
+                  {/* Хирургия */}
+                  <div className="subsection">
+                    <h4>Хирургическое лечение</h4>
+                    <div className="form-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          name="radical_surgery_conducted"
+                          checked={formData.radical_surgery_conducted}
+                          onChange={handleChange}
+                        />
+                        <span>Проведена радикальная операция</span>
+                      </label>
+                    </div>
+
+                    {formData.radical_surgery_conducted && (
+                      <div className="grid grid-2">
+                        <DateValidation
+                          name="radical_surgery_date"
+                          label="Дата операции"
+                          value={formData.radical_surgery_date}
+                          onChange={handleChange}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ХЛТ */}
+                  <div className="subsection">
+                    <h4>Химиолучевая терапия (ХЛТ)</h4>
+                    <div className="form-group">
+                      <label className="checkbox-label">
+                        <input
+                          type="checkbox"
+                          name="radical_crt_conducted"
+                          checked={formData.radical_crt_conducted}
+                          onChange={handleChange}
+                        />
+                        <span>Проведена ХЛТ</span>
+                      </label>
+                    </div>
+
+                    {formData.radical_crt_conducted && (
+                      <>
+                        <div className="grid grid-2">
+                          <DateValidation
+                            name="radical_crt_start_date"
+                            label="Дата начала ХЛТ"
+                            value={formData.radical_crt_start_date}
+                            onChange={handleChange}
+                          />
+                          <DateValidation
+                            name="radical_crt_end_date"
+                            label="Дата окончания ХЛТ"
+                            value={formData.radical_crt_end_date}
+                            onChange={handleChange}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="checkbox-label">
+                            <input
+                              type="checkbox"
+                              name="radical_crt_consolidation"
+                              checked={formData.radical_crt_consolidation}
+                              onChange={handleChange}
+                            />
+                            <span>Консолидация после ХЛТ</span>
+                          </label>
+                        </div>
+
+                        {formData.radical_crt_consolidation && (
+                          <div className="grid grid-2">
+                            <div className="form-group">
+                              <label className="form-label">Препарат консолидации</label>
+                              <input
+                                type="text"
+                                name="radical_crt_consolidation_drug"
+                                value={formData.radical_crt_consolidation_drug}
+                                onChange={handleChange}
+                                className="form-input"
+                                placeholder="Название препарата"
+                              />
+                            </div>
+                            <DateValidation
+                              name="radical_crt_consolidation_end_date"
+                              label="Дата окончания консолидации"
+                              value={formData.radical_crt_consolidation_end_date}
+                              onChange={handleChange}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Периоперационная терапия */}
+                  <div className="subsection">
+                    <h4>Периоперационная терапия</h4>
+                    <p className="form-help">Неоадъювантная и/или адъювантная терапия</p>
+                    
+                    {(formData.radical_perioperative_therapy || []).map((therapy, index) => (
+                      <div key={index} className="therapy-item">
+                        <div className="therapy-header">
+                          <h5>Терапия {index + 1}</h5>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.radical_perioperative_therapy.filter((_, i) => i !== index)
+                              setFormData({ ...formData, radical_perioperative_therapy: updated })
+                            }}
+                            className="btn-remove"
+                          >
+                            Удалить
+                          </button>
+                        </div>
+
+                        <div className="grid grid-2">
+                          <div className="form-group">
+                            <label className="form-label">Тип терапии</label>
+                            <select
+                              value={therapy.type || ''}
+                              onChange={(e) => {
+                                const updated = [...formData.radical_perioperative_therapy]
+                                updated[index] = { ...updated[index], type: e.target.value }
+                                setFormData({ ...formData, radical_perioperative_therapy: updated })
+                              }}
+                              className="form-select"
+                            >
+                              <option value="">Выберите...</option>
+                              <option value="NEOADJUVANT">Неоадъювантная</option>
+                              <option value="ADJUVANT">Адъювантная</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Режим терапии</label>
+                          <TherapyBuilder
+                            value={therapy.therapy}
+                            onChange={(newTherapy) => {
+                              const updated = [...formData.radical_perioperative_therapy]
+                              updated[index] = { ...updated[index], therapy: newTherapy }
+                              setFormData({ ...formData, radical_perioperative_therapy: updated })
+                            }}
+                          />
+                        </div>
+
+                        <div className="grid grid-2">
+                          <DateValidation
+                            name={`periop_start_${index}`}
+                            label="Дата начала"
+                            value={therapy.start_date || ''}
+                            onChange={(e) => {
+                              const updated = [...formData.radical_perioperative_therapy]
+                              updated[index] = { ...updated[index], start_date: e.target.value }
+                              setFormData({ ...formData, radical_perioperative_therapy: updated })
+                            }}
+                          />
+                          <DateValidation
+                            name={`periop_end_${index}`}
+                            label="Дата окончания"
+                            value={therapy.end_date || ''}
+                            onChange={(e) => {
+                              const updated = [...formData.radical_perioperative_therapy]
+                              updated[index] = { ...updated[index], end_date: e.target.value }
+                              setFormData({ ...formData, radical_perioperative_therapy: updated })
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = [
+                          ...(formData.radical_perioperative_therapy || []),
+                          { type: '', therapy: null, start_date: '', end_date: '' }
+                        ]
+                        setFormData({ ...formData, radical_perioperative_therapy: updated })
+                      }}
+                      className="btn btn-secondary"
+                    >
+                      + Добавить периоперационную терапию
+                    </button>
+                  </div>
+
+                  {/* Исход радикального лечения */}
+                  <div className="subsection">
+                    <h4>Исход радикального лечения</h4>
+                    <div className="grid grid-2">
+                      {renderSelect('radical_treatment_outcome', 'radical_treatment_outcome', 'Исход')}
+                      
+                      {formData.radical_treatment_outcome === 'RELAPSE' && (
+                        <DateValidation
+                          name="relapse_date"
+                          label="Дата рецидива *"
+                          value={formData.relapse_date}
+                          onChange={handleChange}
+                          required
+                        />
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )
+
+      case 'metastatic-therapy':
+        // Только для ROS1 регистра
+        if (!isROS1) return null
+        
+        const minStartDate = formData.relapse_date || formData.metastatic_diagnosis_date || formData.initial_diagnosis_date
+        
+        return (
+          <div className="card">
+            <h3>Лечение метастатического процесса</h3>
+            
+            <div className="grid grid-2">
+              <DateValidation
+                name="metastatic_diagnosis_date"
+                label="Дата установления метастатического заболевания"
+                value={formData.metastatic_diagnosis_date}
+                onChange={handleChange}
+                tooltip="Дата начала метастатической фазы или дата рецидива"
+              />
+            </div>
+
+            <TherapyLinesTable
+              value={formData.metastatic_therapy_lines || []}
+              onChange={(lines) => setFormData({ ...formData, metastatic_therapy_lines: lines })}
+              dictionaries={dictionaries}
+              minStartDate={minStartDate}
+            />
+          </div>
         )
 
       case 'previous-therapy':
@@ -962,7 +1454,8 @@ function PatientFormPageNew({ user }) {
         <PatientFormSidebar 
           currentSection={currentSection}
           onSectionChange={setCurrentSection}
-          sections={sections}
+          sections={registryType === 'ALK' ? alkSections : []}
+          structure={registryType === 'ROS1' ? ros1Structure : null}
           formData={formData}
         />
         

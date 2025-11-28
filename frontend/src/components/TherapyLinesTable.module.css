@@ -1,0 +1,297 @@
+/* TherapyLinesTable Component Styles */
+
+.therapyLinesTable {
+  width: 100%;
+  margin: 20px 0;
+}
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #e5e5e5;
+}
+
+.tableHeader h4 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #333;
+}
+
+.addButton {
+  padding: 8px 16px;
+  background: var(--primary-color, #16a34a);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.addButton:hover:not(:disabled) {
+  background: var(--primary-color-dark, #15803d);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3);
+}
+
+.addButton:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.addButtonLarge {
+  padding: 12px 24px;
+  background: var(--primary-color, #16a34a);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.addButtonLarge:hover:not(:disabled) {
+  background: var(--primary-color-dark, #15803d);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 40px;
+  background: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 8px;
+}
+
+.emptyState p {
+  margin: 0 0 20px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.linesContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lineCard {
+  background: white;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.lineCard:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.lineCard.expanded {
+  border-color: var(--primary-color, #16a34a);
+  box-shadow: 0 2px 12px rgba(22, 163, 74, 0.15);
+}
+
+.lineHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: background 0.2s ease;
+}
+
+.lineHeader:hover {
+  background: #f5f5f5;
+}
+
+.lineCard.expanded .lineHeader {
+  background: white;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.lineTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lineNumber {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.lineCompletion {
+  display: inline-block;
+  padding: 4px 10px;
+  background: #e5e7eb;
+  color: #374151;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lineActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.removeButton {
+  padding: 4px 8px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.removeButton:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.removeButton:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.expandIcon {
+  font-size: 12px;
+  color: #666;
+  transition: transform 0.2s ease;
+}
+
+.lineCard.expanded .expandIcon {
+  transform: rotate(90deg);
+}
+
+.lineContent {
+  padding: 20px;
+  background: white;
+}
+
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.formLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.formInput,
+.formSelect {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.formInput:focus,
+.formSelect:focus {
+  outline: none;
+  border-color: var(--primary-color, #16a34a);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+}
+
+.formInput:disabled,
+.formSelect:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+}
+
+.gridTwo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.validationErrors {
+  margin: 16px 0;
+  padding: 12px;
+  background: #fef2f2;
+  border-left: 4px solid #ef4444;
+  border-radius: 4px;
+}
+
+.errorMessage {
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.errorMessage:not(:last-child) {
+  margin-bottom: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .tableHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .tableHeader h4 {
+    font-size: 16px;
+  }
+
+  .addButton,
+  .addButtonLarge {
+    width: 100%;
+  }
+
+  .gridTwo {
+    grid-template-columns: 1fr;
+  }
+
+  .lineHeader {
+    padding: 12px;
+  }
+
+  .lineContent {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .lineNumber {
+    font-size: 14px;
+  }
+
+  .lineCompletion {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
+  .removeButton {
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+
+  .formLabel {
+    font-size: 13px;
+  }
+
+  .formInput,
+  .formSelect {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+}
