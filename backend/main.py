@@ -61,86 +61,52 @@ def calculate_completion_percentage(clinical_record) -> CompletionResponse:
     if not clinical_record:
         return CompletionResponse(filled_fields=0, total_fields=88, completion_percentage=0.0)
     
-    # Define all fields that should be counted
-    main_fields = [
+    # Определяем набор полей в зависимости от типа регистра записи
+    reg_type = getattr(clinical_record, 'registry_type', 'ALK')
+    
+    common_fields = [
         'patient_code', 'gender', 'birth_date', 'height', 'weight', 
         'smoking_status', 'initial_diagnosis_date', 'tnm_stage', 
-        'metastatic_disease_date', 'histology', 'alk_diagnosis_date', 
-        'alk_fusion_variant', 'tp53_comutation', 'ttf1_expression',
-        'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
-        'maximum_response', 'earliest_response_date', 'intracranial_response',
-        'progression_during_alectinib', 'current_status', 'last_contact_date'
+        'histology', 'current_status', 'last_contact_date'
     ]
     
-    # Array fields
-    array_fields = [
-        'comorbidities', 'alk_methods', 'previous_therapy_types',
-        'metastases_sites', 'progression_sites', 'next_line_treatments'
-    ]
+    if reg_type == 'ROS1':
+        specific_fields = [
+            'ros1_fusion_variant', 'pdl1_status', 
+            'radical_treatment_conducted', 
+            'metastatic_diagnosis_date'
+        ]
+    else: # ALK
+        specific_fields = [
+            'alk_diagnosis_date', 'alk_fusion_variant',
+            'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
+            'maximum_response', 'alectinib_therapy_status'
+        ]
     
-    # Conditional fields based on data
-    conditional_fields = []
+    all_fields = common_fields + specific_fields
     
-    # Previous therapy fields (if had_previous_therapy is True)
-    if getattr(clinical_record, 'had_previous_therapy', False):
-        conditional_fields.extend([
-            'previous_therapy_start_date', 'previous_therapy_end_date',
-            'previous_therapy_response', 'previous_therapy_stop_reason'
-        ])
+    # Array fields (check length > 0)
+    array_fields = ['comorbidities', 'metastases_sites']
+    if reg_type == 'ALK':
+        array_fields.extend(['alk_methods', 'previous_therapy_types', 'progression_sites'])
+    elif reg_type == 'ROS1':
+        array_fields.extend(['metastatic_therapy_lines']) # Проверка наличия линий
     
-    # CNS fields (if cns_metastases is True)
-    if getattr(clinical_record, 'cns_metastases', False):
-        conditional_fields.extend([
-            'cns_measurable', 'cns_symptomatic', 'cns_radiotherapy'
-        ])
-    
-    # Progression fields (if progression occurred)
-    if getattr(clinical_record, 'progression_during_alectinib') in ['да олигопрогрессирование', 'да системное']:
-        conditional_fields.extend([
-            'local_treatment_at_progression', 'progression_date',
-            'continued_after_progression'
-        ])
-    
-    # Treatment end fields (if alectinib_end_date exists)
-    if getattr(clinical_record, 'alectinib_end_date'):
-        conditional_fields.extend([
-            'alectinib_stop_reason', 'had_treatment_interruption',
-            'had_dose_reduction'
-        ])
-    
-    # Interruption fields (if had_treatment_interruption is True)
-    if getattr(clinical_record, 'had_treatment_interruption', False):
-        conditional_fields.extend([
-            'interruption_reason', 'interruption_duration_months'
-        ])
-    
-    # Next line fields (if there's next line treatment)
-    if getattr(clinical_record, 'next_line_treatments') and len(getattr(clinical_record, 'next_line_treatments') or []) > 0:
-        conditional_fields.extend([
-            'next_line_start_date', 'progression_on_next_line',
-            'next_line_end_date', 'total_lines_after_alectinib'
-        ])
-    
-    # Next line progression fields (if progression_on_next_line is True)
-    if getattr(clinical_record, 'progression_on_next_line', False):
-        conditional_fields.append('progression_on_next_line_date')
-    
-    all_fields = main_fields + array_fields + conditional_fields
-    total_fields = len(all_fields)
     filled_fields = 0
     
+    # Check scalar fields
     for field in all_fields:
         value = getattr(clinical_record, field, None)
-        if value is not None:
-            if isinstance(value, list):
-                if len(value) > 0:
-                    filled_fields += 1
-            elif isinstance(value, str):
-                if value.strip() != '':
-                    filled_fields += 1
-            else:
-                filled_fields += 1
+        if value is not None and value != "":
+            filled_fields += 1
+            
+    # Check array fields
+    for field in array_fields:
+        value = getattr(clinical_record, field, None)
+        if value and isinstance(value, list) and len(value) > 0:
+             filled_fields += 1
     
+    total_fields = len(all_fields) + len(array_fields)
     completion_percentage = round((filled_fields / total_fields) * 100, 1) if total_fields > 0 else 0.0
     
     return CompletionResponse(
@@ -862,14 +828,24 @@ def get_analytics(
             total_records = len(records)
             field_completion = {}
             
-            # List of important fields to track
-            important_fields = [
-                'gender', 'birth_date', 'height', 'weight',
-                'initial_diagnosis_date', 'tnm_stage', 'histology',
-                'alk_diagnosis_date', 'alk_methods',
-                'alectinib_start_date', 'ecog_at_start',
-                'current_status', 'last_contact_date'
-            ]
+            # Выбор полей в зависимости от регистра
+            if registry_type == 'ROS1':
+                important_fields = [
+                    'gender', 'birth_date', 'height', 'weight',
+                    'initial_diagnosis_date', 'tnm_stage', 'histology',
+                    'ros1_fusion_variant', 'pdl1_status',
+                    'radical_treatment_conducted',
+                    'metastatic_diagnosis_date',
+                    'current_status', 'last_contact_date'
+                ]
+            else: # ALK (default)
+                important_fields = [
+                    'gender', 'birth_date', 'height', 'weight',
+                    'initial_diagnosis_date', 'tnm_stage', 'histology',
+                    'alk_diagnosis_date', 'alk_methods',
+                    'alectinib_start_date', 'ecog_at_start',
+                    'current_status', 'last_contact_date'
+                ]
             
             for field in important_fields:
                 filled_count = sum(1 for r in records if getattr(r, field) is not None)

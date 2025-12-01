@@ -11,7 +11,7 @@ function AnalyticsPage() {
 
   useEffect(() => {
     loadAnalytics()
-  }, [registryType]) // Перезагружать при смене регистра
+  }, [registryType]) 
 
   const loadAnalytics = async () => {
     try {
@@ -98,6 +98,7 @@ function AnalyticsPage() {
 
 function getFieldLabel(field) {
   const labels = {
+    // Общие
     gender: 'Пол',
     birth_date: 'Дата рождения',
     height: 'Рост',
@@ -105,12 +106,20 @@ function getFieldLabel(field) {
     initial_diagnosis_date: 'Дата диагноза',
     tnm_stage: 'Стадия TNM',
     histology: 'Гистология',
+    current_status: 'Текущий статус',
+    last_contact_date: 'Дата последнего контакта',
+    
+    // ALK
     alk_diagnosis_date: 'Дата ALK диагностики',
     alk_methods: 'Методы ALK',
-    alectinib_start_date: 'Дата начала алектиниба',
+    alectinib_start_date: 'Начало алектиниба',
     ecog_at_start: 'ECOG статус',
-    current_status: 'Текущий статус',
-    last_contact_date: 'Дата последнего контакта'
+    
+    // ROS1 (Новые поля)
+    ros1_fusion_variant: 'Вариант транслокации ROS1',
+    pdl1_status: 'PD-L1 статус',
+    radical_treatment_conducted: 'Радикальное лечение (Да/Нет)',
+    metastatic_diagnosis_date: 'Дата метастатической стадии'
   }
   return labels[field] || field
 }

@@ -1,37 +1,56 @@
 import React, { useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useRegistry } from '../contexts/RegistryContext'
+// Убедитесь, что файл CSS существует по этому пути, или закомментируйте, если стили глобальные
 import './Layout.css'
 
 function Layout({ user, onLogout, children }) {
   const location = useLocation()
+  const navigate = useNavigate()
+  // Получаем данные из контекста. Убедитесь, что RegistryContext предоставляет эти методы
   const { registryType, getRegistryColor, getRegistryName } = useRegistry()
 
   const isActive = (path) => location.pathname === path
 
   // Динамически обновляем CSS переменную --primary-color
   useEffect(() => {
-    if (registryType) {
+    if (registryType && getRegistryColor) {
       const primaryColor = getRegistryColor()
       document.documentElement.style.setProperty('--primary-color', primaryColor)
     }
   }, [registryType, getRegistryColor])
+
+  // Безопасное получение имени и цвета с фолбэком
+  const regName = getRegistryName ? getRegistryName() : 'Регистр'
+  const regColor = getRegistryColor ? getRegistryColor() : '#2563eb'
 
   return (
     <div className="layout">
       <header className="header">
         <div className="header-content">
           <div className="header-title-container">
-            <h1 className="header-title">{getRegistryName()}</h1>
+            <h1 className="header-title">{regName}</h1>
             {registryType && (
-              <span 
-                className="registry-badge"
-                style={{ backgroundColor: getRegistryColor() }}
-              >
-                {registryType}
-              </span>
+              <>
+                <span 
+                  className="registry-badge"
+                  style={{ backgroundColor: regColor }}
+                >
+                  {registryType}
+                </span>
+                {/* КНОПКА СМЕНЫ РЕГИСТРА В ШАПКЕ */}
+                <button 
+                  onClick={() => navigate('/select-registry')} 
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginLeft: '10px', fontSize: '12px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  title="Сменить регистр"
+                >
+                  <span>🔄</span> Сменить регистр
+                </button>
+              </>
             )}
           </div>
+          
           <nav className="nav">
             <Link 
               to="/patients" 
@@ -39,7 +58,8 @@ function Layout({ user, onLogout, children }) {
             >
               Пациенты
             </Link>
-            {user.role === 'admin' && (
+            
+            {user && user.role === 'admin' && (
               <>
                 <Link 
                   to="/dictionaries" 
@@ -68,15 +88,21 @@ function Layout({ user, onLogout, children }) {
               </>
             )}
           </nav>
+          
           <div className="user-menu">
-            <span className="user-name">{user.username}</span>
-            <span className="user-institution">{user.institution_name}</span>
+            {user && (
+              <>
+                <span className="user-name">{user.username}</span>
+                <span className="user-institution">{user.institution_name}</span>
+              </>
+            )}
             <button onClick={onLogout} className="btn btn-secondary btn-sm">
               Выход
             </button>
           </div>
         </div>
       </header>
+      
       <main className="main">
         <div className="container">
           {children}

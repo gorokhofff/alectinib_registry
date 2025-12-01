@@ -193,9 +193,9 @@ function PatientsPage({ user }) {
       <div className="page-header">
         <h2>Список пациентов ({registryType})</h2>
         <div className="header-actions">
-          <button onClick={handleChangeRegistry} className="btn btn-secondary">
+          {/* <button onClick={handleChangeRegistry} className="btn btn-secondary">
             🔄 Сменить регистр
-          </button>
+          </button> */}
           {user.role === 'admin' && (
             <button onClick={handleExportExcel} className="btn btn-info">
               📊 Экспорт в Excel
