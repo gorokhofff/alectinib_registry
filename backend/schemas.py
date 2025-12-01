@@ -13,10 +13,6 @@ class Role(str, Enum):
     ADMIN = "admin"
     USER = "user"
 
-class RegistryType(str, Enum):
-    ALK = "ALK"
-    ROS1 = "ROS1"
-
 class Response(str, Enum):
     COMPLETE = "ПО"  # Полный ответ
     PARTIAL = "ЧО"   # Частичный ответ
@@ -158,29 +154,6 @@ class ClinicalRecordBase(BaseModel):
     next_line_end_date: Optional[datetime] = None
     total_lines_after_alectinib: Optional[int] = None
     
-    # Generic Therapy Fields (for ROS1 and other registries)
-    therapy_type: Optional[str] = None
-    therapy_name: Optional[str] = None
-    therapy_line: Optional[str] = None
-    therapy_start_date: Optional[datetime] = None
-    therapy_end_date: Optional[datetime] = None
-    therapy_status: Optional[str] = None
-    stage_at_therapy_start: Optional[str] = None
-    therapy_response: Optional[str] = None
-    therapy_response_date: Optional[datetime] = None
-    progression_during_therapy: Optional[str] = None
-    progression_sites_during_therapy: Optional[List[str]] = None
-    progression_date_during_therapy: Optional[datetime] = None
-    therapy_stop_reason: Optional[str] = None
-    therapy_interruption: Optional[bool] = None
-    therapy_interruption_reason: Optional[str] = None
-    therapy_dose_reduction: Optional[bool] = None
-    
-    # ROS1-specific diagnostic fields
-    ros1_diagnosis_date: Optional[datetime] = None
-    ros1_methods: Optional[List[str]] = None
-    ros1_fusion_variant: Optional[str] = None
-    
     current_status: Optional[str] = None
     last_contact_date: Optional[datetime] = None
 
@@ -200,14 +173,12 @@ class ClinicalRecordResponse(ClinicalRecordBase):
 
 # Schemas для Patient
 class PatientBase(BaseModel):
-    registry_type: Optional[str] = Field(default='ALK', description="Registry type: ALK or ROS1")
+    pass
 
 class PatientCreate(PatientBase):
-    registry_type: str = Field(default='ALK', description="Registry type: ALK or ROS1")
     clinical_record: ClinicalRecordCreate
 
 class PatientUpdate(BaseModel):
-    registry_type: Optional[str] = None
     clinical_record: ClinicalRecordUpdate
 
 class PatientResponse(BaseModel):
@@ -215,7 +186,6 @@ class PatientResponse(BaseModel):
     institution_id: int
     institution_name: str
     created_by: int
-    registry_type: str = Field(default='ALK', description="Registry type: ALK or ROS1")
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -278,7 +248,6 @@ class PatientSearch(BaseModel):
     patient_code: Optional[str] = None
     birth_date: Optional[str] = None
     institution_id: Optional[int] = None
-    registry_type: Optional[str] = None
     
 # Schemas для завершенности данных
 class CompletionResponse(BaseModel):

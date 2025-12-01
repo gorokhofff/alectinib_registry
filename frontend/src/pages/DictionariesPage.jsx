@@ -13,8 +13,11 @@ function DictionariesPage() {
     category: '',
     code: '',
     value_ru: '',
+    parent: '',
     sort_order: 0
   })
+  
+  const [therapyClasses, setTherapyClasses] = useState([])
 
   useEffect(() => {
     loadCategories()
@@ -23,8 +26,21 @@ function DictionariesPage() {
   useEffect(() => {
     if (selectedCategory) {
       loadDictionaries()
+      // Загружаем классы терапии для treatment_regimens
+      if (selectedCategory === 'treatment_regimens') {
+        loadTherapyClasses()
+      }
     }
   }, [selectedCategory])
+  
+  const loadTherapyClasses = async () => {
+    try {
+      const data = await dictionaryService.getDictionaries('therapy_classes')
+      setTherapyClasses(data)
+    } catch (err) {
+      console.error('Error loading therapy classes:', err)
+    }
+  }
 
   const loadCategories = async () => {
     try {
@@ -58,6 +74,7 @@ function DictionariesPage() {
       category: selectedCategory,
       code: '',
       value_ru: '',
+      parent: '',
       sort_order: dictionaries.length + 1
     })
     setShowModal(true)
@@ -69,6 +86,7 @@ function DictionariesPage() {
       category: item.category,
       code: item.code,
       value_ru: item.value_ru,
+      parent: item.parent || '',
       sort_order: item.sort_order
     })
     setShowModal(true)
@@ -142,6 +160,7 @@ function DictionariesPage() {
                   <tr>
                     <th>Код</th>
                     <th>Значение</th>
+                    {selectedCategory === 'treatment_regimens' && <th>Класс терапии</th>}
                     <th>Порядок</th>
                     <th>Статус</th>
                     <th>Действия</th>
@@ -152,6 +171,15 @@ function DictionariesPage() {
                     <tr key={item.id}>
                       <td><code>{item.code}</code></td>
                       <td>{item.value_ru}</td>
+                      {selectedCategory === 'treatment_regimens' && (
+                        <td>
+                          {item.parent ? (
+                            <span className="badge badge-info">
+                              {therapyClasses.find(tc => tc.code === item.parent)?.value_ru || item.parent}
+                            </span>
+                          ) : '-'}
+                        </td>
+                      )}
                       <td>{item.sort_order}</td>
                       <td>
                         <span className={`badge ${item.is_active ? 'badge-success' : 'badge-danger'}`}>
@@ -226,6 +254,27 @@ function DictionariesPage() {
                     required
                   />
                 </div>
+                
+                {formData.category === 'treatment_regimens' && (
+                  <div className="form-group">
+                    <label className="form-label">Класс терапии</label>
+                    <select
+                      className="form-input"
+                      value={formData.parent}
+                      onChange={(e) => setFormData({...formData, parent: e.target.value})}
+                    >
+                      <option value="">-- Не указан --</option>
+                      {therapyClasses.map(tc => (
+                        <option key={tc.code} value={tc.code}>
+                          {tc.value_ru}
+                        </option>
+                      ))}
+                    </select>
+                    <small className="form-hint">
+                      Выберите класс терапии, к которому относится эта схема лечения
+                    </small>
+                  </div>
+                )}
 
                 <div className="form-group">
                   <label className="form-label">Порядок сортировки</label>

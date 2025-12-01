@@ -4,11 +4,10 @@
 Создает таблицы, первого администратора и заполняет справочники
 """
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import IntegrityError
 from models import Base, User, Institution, Dictionary
-from database import engine, DATABASE_URL
+from database import engine
 import sys
 
 def init_database():
@@ -61,7 +60,7 @@ def init_database():
         else:
             print("✓ Admin user already exists")
         
-        # Заполнение справочников с upsert logic
+        # Заполнение справочников
         print("\nPopulating dictionaries...")
         
         dictionaries = [
@@ -285,80 +284,6 @@ def init_database():
                     ("NON_SMOKER_15", "не курил 15 пачка/лет", 2),
                 ]
             },
-            # Therapy Lines (generic for both ALK and ROS1)
-            {
-                "category": "therapy_line",
-                "items": [
-                    ("FIRST_LINE", "1-я линия", 1),
-                    ("SECOND_LINE", "2-я линия", 2),
-                    ("THIRD_LINE", "3-я линия", 3),
-                    ("FOURTH_LINE", "4-я линия", 4),
-                    ("FIFTH_LINE", "5-я линия и далее", 5),
-                ]
-            },
-            # ROS1 Diagnostic Methods
-            {
-                "category": "ros1_methods",
-                "items": [
-                    ("IHC", "ИГХ (иммуногистохимия)", 1),
-                    ("FISH", "FISH (флуоресцентная гибридизация)", 2),
-                    ("PCR", "ПЦР (полимеразная цепная реакция)", 3),
-                    ("NGS", "NGS (секвенирование нового поколения)", 4),
-                ]
-            },
-            # ROS1 Fusion Variants
-            {
-                "category": "ros1_fusion_variant",
-                "items": [
-                    ("CD74_ROS1", "CD74-ROS1", 1),
-                    ("SLC34A2_ROS1", "SLC34A2-ROS1", 2),
-                    ("TPM3_ROS1", "TPM3-ROS1", 3),
-                    ("SDC4_ROS1", "SDC4-ROS1", 4),
-                    ("EZR_ROS1", "EZR-ROS1", 5),
-                    ("LRIG3_ROS1", "LRIG3-ROS1", 6),
-                    ("OTHER", "Другой", 7),
-                    ("UNKNOWN", "Неизвестно", 8),
-                ]
-            },
-            # ROS1 Treatment Schemas
-            {
-                "category": "treatment_schemas_ros1",
-                "items": [
-                    ("CRIZOTINIB", "Кризотиниб", 1),
-                    ("ENTRECTINIB", "Энтректиниб", 2),
-                    ("LORLATINIB", "Лорлатиниб", 3),
-                    ("CERITINIB", "Церитиниб", 4),
-                    ("CABOZANTINIB", "Кабозантиниб", 5),
-                    ("CHEMOTHERAPY", "Химиотерапия", 6),
-                    ("IMMUNOTHERAPY", "Иммунотерапия", 7),
-                    ("CHEMOIMMUNOTHERAPY", "Химиоиммунотерапия", 8),
-                    ("OTHER", "Другое", 9),
-                ]
-            },
-            # ALK Treatment Schemas (for consistency)
-            {
-                "category": "treatment_schemas_alk",
-                "items": [
-                    ("ALECTINIB", "Алектиниб", 1),
-                    ("CRIZOTINIB", "Кризотиниб", 2),
-                    ("CERITINIB", "Церитиниб", 3),
-                    ("LORLATINIB", "Лорлатиниб", 4),
-                    ("BRIGATINIB", "Бригатиниб", 5),
-                    ("ENSARTINIB", "Энсартиниб", 6),
-                    ("CHEMOTHERAPY", "Химиотерапия", 7),
-                    ("IMMUNOTHERAPY", "Иммунотерапия", 8),
-                    ("CHEMOIMMUNOTHERAPY", "Химиоиммунотерапия", 9),
-                    ("OTHER", "Другое", 10),
-                ]
-            },
-            # Therapy Status (generic)
-            {
-                "category": "therapy_status",
-                "items": [
-                    ("ONGOING", "Продолжается", 1),
-                    ("STOPPED", "Прекращена", 2),
-                ]
-            },
             # TNM стадии (8-я классификация)
             {
                 "category": "tnm_stage",
@@ -429,12 +354,8 @@ def init_database():
             },
         ]
         
-        # Вставка справочников с защитой от дубликатов
-        # Используем upsert logic для обеспечения идемпотентности
+        # Вставка справочников
         total_inserted = 0
-        total_updated = 0
-        total_skipped = 0
-        
         for dict_cat in dictionaries:
             category = dict_cat["category"]
             for code, value_ru, sort_order in dict_cat["items"]:
@@ -443,16 +364,7 @@ def init_database():
                     code=code
                 ).first()
                 
-                if existing:
-                    # Обновляем существующую запись (если изменились данные)
-                    if existing.value_ru != value_ru or existing.sort_order != sort_order:
-                        existing.value_ru = value_ru
-                        existing.sort_order = sort_order
-                        total_updated += 1
-                    else:
-                        total_skipped += 1
-                else:
-                    # Создаем новую запись
+                if not existing:
                     dict_entry = Dictionary(
                         category=category,
                         code=code,
@@ -463,10 +375,7 @@ def init_database():
                     total_inserted += 1
         
         db.commit()
-        print(f"✓ Dictionaries processed:")
-        print(f"  - {total_inserted} entries added")
-        print(f"  - {total_updated} entries updated")
-        print(f"  - {total_skipped} entries skipped (already up-to-date)")
+        print(f"✓ Dictionaries populated: {total_inserted} entries added")
         
         print("\n" + "="*60)
         print("DATABASE INITIALIZATION COMPLETED SUCCESSFULLY!")
@@ -480,8 +389,6 @@ def init_database():
         
     except Exception as e:
         print(f"\n✗ Error during initialization: {e}")
-        import traceback
-        traceback.print_exc()
         db.rollback()
         sys.exit(1)
     finally:
