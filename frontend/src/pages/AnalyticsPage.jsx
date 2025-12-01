@@ -1,20 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { analyticsService } from '../services/analyticsService'
+import { useRegistry } from '../contexts/RegistryContext'
 import './AnalyticsPage.css'
 
 function AnalyticsPage() {
   const [analytics, setAnalytics] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const { registryType } = useRegistry()
 
   useEffect(() => {
     loadAnalytics()
-  }, [])
+  }, [registryType]) // Перезагружать при смене регистра
 
   const loadAnalytics = async () => {
     try {
       setLoading(true)
-      const data = await analyticsService.getAnalytics()
+      // Передаем registry_type в запрос
+      const data = await analyticsService.getAnalytics({ registry_type: registryType })
       setAnalytics(data)
     } catch (err) {
       setError('Ошибка загрузки аналитики')
@@ -42,7 +45,7 @@ function AnalyticsPage() {
   return (
     <div className="analytics-page">
       <div className="page-header">
-        <h2>Аналитическая справка</h2>
+        <h2>Аналитическая справка ({registryType})</h2>
       </div>
 
       <div className="summary-cards">

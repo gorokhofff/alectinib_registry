@@ -11,8 +11,6 @@ from database import engine
 import sys
 
 def init_database():
-    """Initialize database with tables, admin user, and dictionaries"""
-    
     print("Creating database tables...")
     Base.metadata.create_all(bind=engine)
     print("✓ Tables created successfully")
@@ -21,50 +19,86 @@ def init_database():
     db = SessionLocal()
     
     try:
-        # Создание учреждения для администратора
-        print("\nCreating default institution...")
-        institution = db.query(Institution).filter_by(
-            name="НМИЦ Онкологии им. Н.Н. Блохина"
-        ).first()
-        
+        # Создание учреждения
+        institution = db.query(Institution).filter_by(name="НМИЦ Онкологии им. Н.Н. Блохина").first()
         if not institution:
-            institution = Institution(
-                name="НМИЦ Онкологии им. Н.Н. Блохина",
-                code="BLOKHIN",
-                city="Москва"
-            )
+            institution = Institution(name="НМИЦ Онкологии им. Н.Н. Блохина", code="BLOKHIN", city="Москва")
             db.add(institution)
             db.commit()
             db.refresh(institution)
-            print(f"✓ Institution created: {institution.name}")
-        else:
-            print(f"✓ Institution already exists: {institution.name}")
         
-        # Создание первого администратора
-        print("\nCreating admin user...")
+        # Создание админа
         admin = db.query(User).filter_by(username="admin").first()
-        
         if not admin:
-            admin = User(
-                username="admin",
-                role="admin",
-                institution_id=institution.id
-            )
+            admin = User(username="admin", role="admin", institution_id=institution.id)
             admin.set_password("Dlyazapolneniya8!")
             db.add(admin)
             db.commit()
-            print("✓ Admin user created")
-            print(f"  Username: admin")
-            print(f"  Password: Dlyazapolneniya8!")
-            print(f"  Institution: {institution.name}")
-        else:
-            print("✓ Admin user already exists")
         
-        # Заполнение справочников
         print("\nPopulating dictionaries...")
         
         dictionaries = [
-            # Сопутствующие заболевания
+            # --- НОВЫЕ СПРАВОЧНИКИ ДЛЯ ROS1 ---
+            {
+                "category": "ros1_fusion_variant",
+                "items": [
+                    ("CD74", "CD74", 1),
+                    ("EZR", "EZR", 2),
+                    ("SLC34A2", "SLC34A2", 3),
+                    ("SDC4", "SDC4", 4),
+                    ("FIG", "FIG", 5),
+                    ("TPM3", "TPM3", 6),
+                    ("LRIG3", "LRIG3", 7),
+                    ("KDELR2", "KDELR2", 8),
+                    ("CCDC6", "CCDC6", 9),
+                    ("TMEM106B", "TMEM106B", 10),
+                    ("TFG", "TFG", 11),
+                    ("OTHER", "Другой", 12),
+                    ("UNKNOWN", "Неизвестно", 13),
+                ]
+            },
+            {
+                "category": "pdl1_status",
+                "items": [
+                    ("TPS_LESS_1", "TPS < 1%", 1),
+                    ("TPS_1_49", "TPS 1-49%", 2),
+                    ("TPS_MORE_50", "TPS ≥ 50%", 3),
+                    ("NOT_DONE", "Не выполнялся", 4),
+                    ("UNKNOWN", "Неизвестно", 5),
+                ]
+            },
+            {
+                "category": "surgery_types",
+                "items": [
+                    ("LOBECTOMY_LN", "Лобэктомия + лимфодиссекция", 1),
+                    ("LOBECTOMY_NO_LN", "Лобэктомия без лимфодиссекции", 2),
+                    ("PNEUMONECTOMY_LN", "Пневмонэктомия + лимфодиссекция", 3),
+                    ("PNEUMONECTOMY_NO_LN", "Пневмонэктомия без лимфодиссекции", 4),
+                    ("ATYPICAL_RESECTION", "Атипичная резекция", 5),
+                    ("OTHER", "Другое", 6),
+                ]
+            },
+            # --- ИСХОДЫ РАДИКАЛЬНОГО ЛЕЧЕНИЯ ---
+            {
+                "category": "radical_treatment_outcome",
+                "items": [
+                    ("REMISSION", "Ремиссия (без признаков болезни)", 1),
+                    ("RELAPSE", "Рецидив", 2),
+                    ("DEATH", "Смерть", 3),
+                    ("UNKNOWN", "Неизвестно", 4),
+                ]
+            },
+            # --- ЛОКАЛЬНОЕ ЛЕЧЕНИЕ ---
+            {
+                "category": "local_treatment_at_progression",
+                "items": [
+                    ("RADIOTHERAPY", "Радиотерапия", 1),
+                    ("SURGERY", "Хирургия", 2),
+                    ("NONE", "Локальное лечение не проводилось", 3),
+                ]
+            },
+            
+            # --- СУЩЕСТВУЮЩИЕ СПРАВОЧНИКИ ---
             {
                 "category": "comorbidities",
                 "items": [
@@ -84,7 +118,52 @@ def init_database():
                     ("NONE", "Нет", 14),
                 ]
             },
-            # Методы диагностики ALK
+            {
+                "category": "therapy_classes",
+                "items": [
+                    ("TARGETED", "Таргетная терапия", 1),
+                    ("IMMUNOTHERAPY", "Иммунотерапия", 2),
+                    ("CHEMOTHERAPY", "Химиотерапия", 3),
+                    ("CHEMOIMMUNOTHERAPY", "Химиоиммунотерапия", 4),
+                    ("CHEMOTARGETED", "Химиотаргетная терапия", 5),
+                ]
+            },
+            {
+                "category": "treatment_regimens",
+                "items": [
+                    ("MONOTHERAPY", "Монотерапия", 1, "ALL"),
+                    ("PLATINUM_DOUBLET", "Платиновый дублет", 2, "CHEMOTHERAPY"),
+                    ("NON_PLATINUM_DOUBLET", "Неплатиновый дублет", 3, "CHEMOTHERAPY"),
+                    ("OTHER_REGIMEN", "Другая схема", 4, "ALL"),
+                ]
+            },
+            {
+                "category": "chemo_drugs",
+                "items": [
+                    ("CISPLATIN", "Цисплатин", 1, "CHEMOTHERAPY"),
+                    ("CARBOPLATIN", "Карбоплатин", 2, "CHEMOTHERAPY"),
+                    ("PEMETREXED", "Пеметрексед", 3, "CHEMOTHERAPY"),
+                    ("PACLITAXEL", "Паклитаксел", 4, "CHEMOTHERAPY"),
+                    ("DOCETAXEL", "Доцетаксел", 5, "CHEMOTHERAPY"),
+                    ("GEMCITABINE", "Гемцитабин", 6, "CHEMOTHERAPY"),
+                    ("VINORELBINE", "Винорелбин", 7, "CHEMOTHERAPY"),
+                    ("ETOPOSIDE", "Этопозид", 8, "CHEMOTHERAPY"),
+                    ("PEMBROLIZUMAB", "Пембролизумаб", 9, "IMMUNOTHERAPY"),
+                    ("NIVOLUMAB", "Ниволумаб", 10, "IMMUNOTHERAPY"),
+                    ("ATEZOLIZUMAB", "Атезолизумаб", 11, "IMMUNOTHERAPY"),
+                    ("DURVALUMAB", "Дурвалумаб", 12, "IMMUNOTHERAPY"),
+                    ("IPILIMUMAB", "Ипилимумаб", 13, "IMMUNOTHERAPY"),
+                    ("ALECTINIB", "Алектиниб", 14, "TARGETED"),
+                    ("CRIZOTINIB", "Кризотиниб", 15, "TARGETED"),
+                    ("CERITINIB", "Церитиниб", 16, "TARGETED"),
+                    ("BRIGATINIB", "Бригатиниб", 17, "TARGETED"),
+                    ("LORLATINIB", "Лорлатиниб", 18, "TARGETED"),
+                    ("BEVACIZUMAB", "Бевацизумаб", 19, "TARGETED"),
+                    ("RAMUCIRUMAB", "Рамуцирумаб", 20, "TARGETED"),
+                    ("ENTRECTINIB", "Энтректиниб", 21, "TARGETED"),
+                    ("REPOTRECTINIB", "Репотректиниб", 22, "TARGETED"),
+                ]
+            },
             {
                 "category": "alk_methods",
                 "items": [
@@ -94,7 +173,6 @@ def init_database():
                     ("NGS", "NGS (секвенирование нового поколения)", 4),
                 ]
             },
-            # Варианты ALK-фузии
             {
                 "category": "alk_fusion_variant",
                 "items": [
@@ -105,7 +183,6 @@ def init_database():
                     ("UNKNOWN", "Неизвестно", 5),
                 ]
             },
-            # Типы предыдущей терапии
             {
                 "category": "previous_therapy_types",
                 "items": [
@@ -116,7 +193,6 @@ def init_database():
                     ("OTHER", "Другое", 5),
                 ]
             },
-            # Локализации метастазов
             {
                 "category": "metastases_sites",
                 "items": [
@@ -129,7 +205,6 @@ def init_database():
                     ("NONE", "Нет", 7),
                 ]
             },
-            # Гистология
             {
                 "category": "histology",
                 "items": [
@@ -139,7 +214,6 @@ def init_database():
                     ("OTHER", "Другое", 4),
                 ]
             },
-            # Стадия на момент начала алектиниба
             {
                 "category": "stage_at_alectinib_start",
                 "items": [
@@ -147,8 +221,6 @@ def init_database():
                     ("METASTATIC", "Метастатическая", 2),
                 ]
             },
-
-            # Статус терапии алектинибом
             {
                 "category": "alectinib_therapy_status",
                 "items": [
@@ -156,8 +228,6 @@ def init_database():
                     ("STOPPED", "Прекращена", 2),
                 ]
             },
-            
-            # Ответ на терапию
             {
                 "category": "response",
                 "items": [
@@ -168,7 +238,6 @@ def init_database():
                     ("NA", "НП (не применимо)", 5),
                 ]
             },
-            # Тип прогрессирования
             {
                 "category": "progression_type",
                 "items": [
@@ -177,7 +246,6 @@ def init_database():
                     ("NONE", "Нет", 3),
                 ]
             },
-            # Локальное лечение при прогрессировании
             {
                 "category": "local_treatment_at_progression",
                 "items": [
@@ -186,11 +254,10 @@ def init_database():
                     ("NONE", "Локальное лечение не проводилось", 3),
                 ]
             },
-            # Причины окончания алектиниба
             {
                 "category": "alectinib_stop_reason",
                 "items": [
-                    ("PROGRESSION", "Прогрессирование", 1),
+                    # "PROGRESSION" убрано
                     ("INTOLERANCE", "Непереносимость", 2),
                     ("PATIENT_REFUSAL", "Отказ пациента", 3),
                     ("ADMINISTRATIVE", "Административные причины", 4),
@@ -198,17 +265,15 @@ def init_database():
                     ("OTHER", "Другое", 6),
                 ]
             },
-            # Причины прерывания лечения
             {
                 "category": "interruption_reason",
                 "items": [
                     ("ADVERSE_EVENTS", "Нежелательные явления", 1),
                     ("NON_COMPLIANCE", "Несоблюдение пациентом предписаний", 2),
-                    ("ADMINISTRATIVE", "Административные причины (в т.ч. исчезновение доступа к препарату)", 3),
+                    ("ADMINISTRATIVE", "Административные причины", 3),
                     ("OTHER", "Другое", 4),
                 ]
             },
-            # Следующая линия терапии
             {
                 "category": "next_line_treatments",
                 "items": [
@@ -223,7 +288,6 @@ def init_database():
                     ("OTHER", "Другое", 9),
                 ]
             },
-            # Текущий статус пациента
             {
                 "category": "current_status",
                 "items": [
@@ -232,7 +296,6 @@ def init_database():
                     ("LOST_TO_FOLLOWUP", "Ушел из-под наблюдения", 3),
                 ]
             },
-            # Да/Нет/Неизвестно
             {
                 "category": "yes_no_unknown",
                 "items": [
@@ -241,7 +304,6 @@ def init_database():
                     ("UNKNOWN", "Неизвестно", 3),
                 ]
             },
-            # Измеряемость метастазов в ЦНС
             {
                 "category": "cns_measurable",
                 "items": [
@@ -249,7 +311,6 @@ def init_database():
                     ("NON_MEASURABLE", "Неизмеряемые", 2),
                 ]
             },
-            # Симптоматичность метастазов в ЦНС
             {
                 "category": "cns_symptomatic",
                 "items": [
@@ -257,7 +318,6 @@ def init_database():
                     ("ASYMPTOMATIC", "Бессимптомные", 2),
                 ]
             },
-            # Радиотерапия ЦНС
             {
                 "category": "cns_radiotherapy",
                 "items": [
@@ -265,18 +325,16 @@ def init_database():
                     ("NOT_DONE", "Радиотерапия не проводилась", 2),
                 ]
             },
-            # Причины прекращения предыдущей терапии
             {
                 "category": "previous_therapy_stop_reason",
                 "items": [
-                    ("SWITCH_TO_TARGETED", "Переход на таргетную терапию после определения ALK-позитивного статуса", 1),
+                    ("SWITCH_TO_TARGETED", "Переход на таргетную терапию", 1),
                     ("PROGRESSION", "Прогрессирование", 2),
                     ("INTOLERANCE", "Непереносимость", 3),
                     ("COMPLETED", "Завершена по плану", 4),
                     ("OTHER", "Другое", 5),
                 ]
             },
-            # Статус курения
             {
                 "category": "smoking_status",
                 "items": [
@@ -284,7 +342,6 @@ def init_database():
                     ("NON_SMOKER_15", "не курил 15 пачка/лет", 2),
                 ]
             },
-            # TNM стадии (8-я классификация)
             {
                 "category": "tnm_stage",
                 "items": [
@@ -352,40 +409,54 @@ def init_database():
                     ("AnyTAnyNM1c", "AnyTAnyNM1c", 62),
                 ]
             },
+            {
+                "category": "progression_sites",
+                "items": [
+                    ('CNS', 'ЦНС', 1),
+                    ('BONES', 'Кости', 2),
+                    ('LIVER', 'Печень', 3),
+                    ('LUNG', 'Легкое', 4),
+                    ('PLEURA', 'Плевра', 5),
+                    ('LYMPH_NODE', 'Лимфоузлы средостения', 6),
+                    ('ADRENAL', 'Надпочечник', 7),
+                    ('OTHER', 'Другое', 8),
+                ]
+            },
+            {
+                "category": "alectinib_progression_type",
+                "items": [
+                    ('OLIGO', 'Олигопрогрессирование', 1),
+                    ('SYSTEMIC', 'Системное', 2),
+                    ('NONE', 'Нет', 3),
+                ]
+            },
         ]
         
-        # Вставка справочников
         total_inserted = 0
         for dict_cat in dictionaries:
             category = dict_cat["category"]
-            for code, value_ru, sort_order in dict_cat["items"]:
-                existing = db.query(Dictionary).filter_by(
-                    category=category,
-                    code=code
-                ).first()
+            for item in dict_cat["items"]:
+                if len(item) == 4:
+                    code, value_ru, sort_order, parent = item
+                else:
+                    code, value_ru, sort_order = item
+                    parent = None
+
+                existing = db.query(Dictionary).filter_by(category=category, code=code).first()
                 
                 if not existing:
                     dict_entry = Dictionary(
-                        category=category,
-                        code=code,
-                        value_ru=value_ru,
-                        sort_order=sort_order
+                        category=category, code=code, value_ru=value_ru,
+                        sort_order=sort_order, parent=parent
                     )
                     db.add(dict_entry)
                     total_inserted += 1
+                else:
+                    if parent is not None and existing.parent != parent:
+                        existing.parent = parent
         
         db.commit()
         print(f"✓ Dictionaries populated: {total_inserted} entries added")
-        
-        print("\n" + "="*60)
-        print("DATABASE INITIALIZATION COMPLETED SUCCESSFULLY!")
-        print("="*60)
-        print("\nYou can now start the application with:")
-        print("  cd backend && python main.py")
-        print("\nDefault admin credentials:")
-        print("  Username: admin")
-        print("  Password: Dlyazapolneniya8!")
-        print("="*60)
         
     except Exception as e:
         print(f"\n✗ Error during initialization: {e}")

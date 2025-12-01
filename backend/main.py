@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -480,37 +479,36 @@ def list_patients(
     institution_id: Optional[int] = None,
     patient_code: Optional[str] = None,
     birth_date: Optional[str] = None,
+    registry_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     query = db.query(Patient).filter(Patient.is_active == True)
     
-    # Если пользователь не администратор, показываем только пациентов его учреждения
     if current_user.role != 'admin':
         query = query.filter(Patient.institution_id == current_user.institution_id)
     elif institution_id:
         query = query.filter(Patient.institution_id == institution_id)
     
-    # Add search functionality
+    # Join with ClinicalRecord to filter by registry_type and search fields
+    query = query.join(ClinicalRecord)
+
+    if registry_type:
+        query = query.filter(ClinicalRecord.registry_type == registry_type)
+    
     if patient_code:
-        query = query.join(ClinicalRecord).filter(
-            ClinicalRecord.patient_code.ilike(f"%{patient_code}%")
-        )
+        query = query.filter(ClinicalRecord.patient_code.ilike(f"%{patient_code}%"))
     
     if birth_date:
         try:
             # Parse date in DD-MM-YYYY format
             search_date = datetime.strptime(birth_date, "%d-%m-%Y").date()
-            query = query.join(ClinicalRecord).filter(
-                func.date(ClinicalRecord.birth_date) == search_date
-            )
+            query = query.filter(func.date(ClinicalRecord.birth_date) == search_date)
         except ValueError:
             try:
                 # Try MM/DD/YYYY format
                 search_date = datetime.strptime(birth_date, "%m/%d/%Y").date()
-                query = query.join(ClinicalRecord).filter(
-                    func.date(ClinicalRecord.birth_date) == search_date
-                )
+                query = query.filter(func.date(ClinicalRecord.birth_date) == search_date)
             except ValueError:
                 pass  # Ignore invalid date formats
     
@@ -598,25 +596,6 @@ def update_patient(
         
         for key, value in update_data.items():
             setattr(clinical_record, key, value)
-    # if patient_update.clinical_record:
-    #     clinical_record = patient.clinical_record
-    #     update_data = patient_update.clinical_record.dict(exclude_unset=True)
-        
-    #     # Recalculate age if dates changed
-    #     if 'birth_date' in update_data or 'initial_diagnosis_date' in update_data:
-    #         birth_date = update_data.get('birth_date', clinical_record.birth_date)
-    #         diagnosis_date = update_data.get('initial_diagnosis_date', clinical_record.initial_diagnosis_date)
-    #         if birth_date and diagnosis_date:
-    #             update_data['age_at_diagnosis'] = calculate_age(birth_date, diagnosis_date)
-        
-    #     for key, value in update_data.items():
-    #         # Handle date fields - convert string to datetime if needed
-    #         if key.endswith('_date') and isinstance(value, str) and value:
-    #             try:
-    #                 value = datetime.strptime(value, '%Y-%m-%d')
-    #             except ValueError:
-    #                 pass  # Keep as is if parsing fails
-    #         setattr(clinical_record, key, value)
     
     patient.updated_at = datetime.utcnow()
     db.commit()
@@ -847,6 +826,7 @@ def delete_dictionary(
 
 @app.get("/api/analytics", response_model=List[AnalyticsResponse])
 def get_analytics(
+    registry_type: Optional[str] = None, # --- FIX: Добавлен параметр фильтрации
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -856,17 +836,26 @@ def get_analytics(
     analytics_data = []
     
     for inst in institutions:
-        # Count patients
-        patient_count = db.query(Patient).filter(
+        # Build queries for patients
+        patient_query = db.query(Patient).filter(
             Patient.institution_id == inst.id,
             Patient.is_active == True
-        ).count()
+        )
         
-        # Get all clinical records for this institution
-        records = db.query(ClinicalRecord).join(Patient).filter(
+        # Build query for clinical records
+        record_query = db.query(ClinicalRecord).join(Patient).filter(
             Patient.institution_id == inst.id,
             Patient.is_active == True
-        ).all()
+        )
+
+        # --- FIX: Фильтрация по типу регистра ---
+        if registry_type:
+            # For patient count, we also need to join ClinicalRecord because registry_type is there
+            patient_query = patient_query.join(ClinicalRecord).filter(ClinicalRecord.registry_type == registry_type)
+            record_query = record_query.filter(ClinicalRecord.registry_type == registry_type)
+        
+        patient_count = patient_query.count()
+        records = record_query.all()
         
         # Calculate field completion rates
         if records:

@@ -18,7 +18,7 @@ function PatientsPage({ user }) {
     patient_code: '',
     birth_date: '',
     institution_id: '',
-    registry_type: registryType // Добавляем фильтр по типу регистра
+    registry_type: registryType // Фильтр по умолчанию из контекста
   })
 
   useEffect(() => {
@@ -26,7 +26,7 @@ function PatientsPage({ user }) {
     loadInstitutions()
   }, [])
 
-  // Автоматически фильтруем пациентов при изменении registryType
+  // Автоматически обновляем фильтр и список при смене регистра в шапке
   useEffect(() => {
     if (registryType) {
       setSearchFilters(prev => ({ ...prev, registry_type: registryType }))
@@ -54,9 +54,16 @@ function PatientsPage({ user }) {
     try {
       setLoading(true)
       
+      // Используем текущий стейт фильтров, если аргумент пустой, но принудительно ставим registry_type
+      const activeFilters = { 
+          ...searchFilters, 
+          ...filters, 
+          registry_type: registryType 
+      }
+
       // Build query parameters
       const params = new URLSearchParams()
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(activeFilters).forEach(([key, value]) => {
         if (value) params.append(key, value)
       })
       
@@ -124,12 +131,14 @@ function PatientsPage({ user }) {
   }
 
   const handleClearSearch = () => {
-    setSearchFilters({
+    const resetFilters = {
       patient_code: '',
       birth_date: '',
-      institution_id: ''
-    })
-    loadPatients()
+      institution_id: '',
+      registry_type: registryType
+    }
+    setSearchFilters(resetFilters)
+    loadPatients(resetFilters)
   }
 
   const handleExportExcel = async () => {
@@ -137,6 +146,10 @@ function PatientsPage({ user }) {
       const params = new URLSearchParams()
       if (searchFilters.institution_id) {
         params.append('institution_id', searchFilters.institution_id)
+      }
+      // Добавляем фильтр по регистру в экспорт
+      if (registryType) {
+          params.append('registry_type', registryType)
       }
       
       const response = await fetch(`/api/export/patients?${params.toString()}`, {
@@ -150,7 +163,7 @@ function PatientsPage({ user }) {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `patients_export_${new Date().toISOString().slice(0,10)}.csv`
+        a.download = `patients_export_${registryType}_${new Date().toISOString().slice(0,10)}.csv`
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -178,7 +191,7 @@ function PatientsPage({ user }) {
   return (
     <div className="patients-page">
       <div className="page-header">
-        <h2>Список пациентов</h2>
+        <h2>Список пациентов ({registryType})</h2>
         <div className="header-actions">
           <button onClick={handleChangeRegistry} className="btn btn-secondary">
             🔄 Сменить регистр
@@ -263,8 +276,9 @@ function PatientsPage({ user }) {
                 <th>Код пациента</th>
                 <th>Пол</th>
                 <th>Дата рождения</th>
-                <th>Возраст на момент диагноза</th>
-                <th>Дата начала алектиниба</th>
+                <th>Возраст</th>
+                {/* Скрываем колонку для ROS1 */}
+                {registryType === 'ALK' && <th>Дата начала алектиниба</th>}
                 <th>Статус</th>
                 <th>Дата заполнения</th>
                 <th>Заполненность</th>
@@ -289,12 +303,15 @@ function PatientsPage({ user }) {
                       }
                     </td>
                     <td>{cr.age_at_diagnosis || '—'}</td>
-                    <td>
-                      {cr.alectinib_start_date
-                        ? new Date(cr.alectinib_start_date).toLocaleDateString('ru-RU')
-                        : '—'
-                      }
-                    </td>
+                    {/* Скрываем ячейку для ROS1 */}
+                    {registryType === 'ALK' && (
+                        <td>
+                        {cr.alectinib_start_date
+                            ? new Date(cr.alectinib_start_date).toLocaleDateString('ru-RU')
+                            : '—'
+                        }
+                        </td>
+                    )}
                     <td>
                       <span className={`badge ${
                         cr.current_status === 'ALIVE' 

@@ -1,8 +1,8 @@
 import api from './api'
 
 export const analyticsService = {
-  async getAnalytics() {
-    const response = await api.get('/analytics')
+  async getAnalytics(params = {}) {
+    const response = await api.get('/analytics', { params })
     return response.data
   },
 

@@ -1,4 +1,3 @@
-
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -27,7 +26,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
-    role = Column(String(20), nullable=False)  # 'admin' or 'user'
+    role = Column(String(20), nullable=False)
     institution_id = Column(Integer, ForeignKey('institutions.id'), nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -38,11 +37,9 @@ class User(Base):
     audit_logs = relationship("AuditLog", back_populates="user")
     
     def set_password(self, password: str):
-        """Hash and set the password"""
         self.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     
     def check_password(self, password: str) -> bool:
-        """Check if provided password matches hash"""
         return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
 class Patient(Base):
@@ -64,69 +61,70 @@ class ClinicalRecord(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey('patients.id'), nullable=False, unique=True)
+    registry_type = Column(String(20), default="ALK", index=True) 
     
-    # NEW FIELDS
-    patient_code = Column(String(100))  # Код пациента для навигации
-    date_filled = Column(DateTime, default=datetime.utcnow)  # Дата заполнения
+    # Основные
+    patient_code = Column(String(100), index=True)
+    date_filled = Column(DateTime, default=datetime.utcnow)
     
-    # Базовые данные пациента
-    gender = Column(String(10))  # 'м' / 'ж'
+    # Базовые данные
+    gender = Column(String(10))
     birth_date = Column(DateTime)
-    height = Column(Float)  # см
-    weight = Column(Float)  # кг
-    comorbidities = Column(JSON)  # Массив: список сопутствующих заболеваний
-    smoking_status = Column(String(50))  # CHANGED: Dropdown instead of free text
-    comorbidities_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
+    height = Column(Float)
+    weight = Column(Float)
+    comorbidities = Column(JSON)
+    smoking_status = Column(String(50))
+    comorbidities_other_text = Column(Text)
     
     # Диагноз
     initial_diagnosis_date = Column(DateTime)
     tnm_stage = Column(String(50))
-    metastatic_disease_date = Column(DateTime)  # если первоначально локализованная стадия
-    histology = Column(String(100))  # аденокарцинома, плоскоклеточный рак, диморфный, другое
+    metastatic_disease_date = Column(DateTime)
+    histology = Column(String(100))
     
-    # ALK диагностика
+    # ALK
     alk_diagnosis_date = Column(DateTime)
-    alk_methods = Column(JSON)  # Массив: ИГХ / FISH / ПЦР / NGS
-    alk_fusion_variant = Column(String(50))  # v1 / v2 / v3 / другой / неизвестно
-    tp53_comutation = Column(String(20))  # да / нет / неизвестно
-    ttf1_expression = Column(String(20))  # да / нет / неизвестно
+    alk_methods = Column(JSON)
+    alk_fusion_variant = Column(String(50))
+    tp53_comutation = Column(String(20))
+    ttf1_expression = Column(String(20))
     
     # Предыдущая терапия
     had_previous_therapy = Column(Boolean)
-    no_previous_therapy = Column(Boolean, default=False)  # NEW: Checkbox for "Не было предыдущей терапии"
-    previous_therapy_types = Column(JSON)  # Массив: химиотерапия, иммунотерапия и т.д.
+    no_previous_therapy = Column(Boolean, default=False)
+    previous_therapy_types = Column(JSON)
     previous_therapy_start_date = Column(DateTime)
     previous_therapy_end_date = Column(DateTime)
-    previous_therapy_response = Column(String(20))  # ПО / ЧО / СЗ / ПЗ / НП
+    previous_therapy_response = Column(String(20))
     previous_therapy_stop_reason = Column(Text)
     
-    # Начало лечения алектинибом
+    # Алектиниб
     alectinib_start_date = Column(DateTime)
-    stage_at_alectinib_start = Column(String(50))  # местнораспространенная / метастатическая
-    ecog_at_start = Column(Integer)  # 0-4
-    metastases_sites = Column(JSON)  # Массив: кости / печень / легкое / плевра / другое / нет
-    metastases_sites_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
+    stage_at_alectinib_start = Column(String(50))
+    ecog_at_start = Column(Integer)
+    metastases_sites = Column(JSON)
+    metastases_sites_other_text = Column(Text)
     cns_metastases = Column(Boolean)
-    cns_measurable = Column(String(50))  # измеряемые / неизмеряемые
-    cns_symptomatic = Column(String(50))  # симптоматические / бессимптомные
-    cns_radiotherapy = Column(String(100))  # радиотерапия проводилась / не проводилась
-    cns_radiotherapy_timing = Column(String(50)) # NEW: Когда была радиотерапия ЦНС
-    alectinib_therapy_status = Column(String(20)) # NEW: Статус терапии алектинибом
+    cns_measurable = Column(String(50))
+    cns_symptomatic = Column(String(50))
+    cns_radiotherapy = Column(String(100))
+    cns_radiotherapy_timing = Column(String(50))
+    alectinib_therapy_status = Column(String(20))
     
-    # Ответ на терапию алектинибом
-    maximum_response = Column(String(20))  # CHANGED: Single field instead of first/second control
+    # Ответ
+    maximum_response = Column(String(20))
     earliest_response_date = Column(DateTime)
-    intracranial_response = Column(String(20))  # ПО / ЧО / СЗ / ПЗ / НП
+    intracranial_response = Column(String(20))
     
-    # Прогрессирование
-    progression_during_alectinib = Column(String(50))  # да олигопрогрессирование / да системное / нет
-    local_treatment_at_progression = Column(String(100))  # радиотерапия / хирургия / не проводилось
-    progression_sites = Column(JSON)  # Массив: ЦНС / кости / печень / легкое / плевра / другое
-    progression_sites_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
+    # Прогрессирование (во время терапии)
+    progression_during_alectinib = Column(String(50))
+    local_treatment_at_progression = Column(String(100))
+    progression_sites = Column(JSON)
+    progression_sites_other_text = Column(Text)
     progression_date = Column(DateTime)
     continued_after_progression = Column(Boolean)
     
-    # Окончание лечения алектинибом
+    # Завершение
     alectinib_end_date = Column(DateTime)
     alectinib_stop_reason = Column(Text)
     had_treatment_interruption = Column(Boolean)
@@ -134,48 +132,70 @@ class ClinicalRecord(Base):
     interruption_duration_months = Column(Float)
     had_dose_reduction = Column(Boolean)
     
-    # Следующая линия терапии
-    next_line_treatments = Column(JSON)  # Массив: кризотиниб, церитиниб и т.д.
+    # --- НОВЫЕ ПОЛЯ: Прогрессирование ПОСЛЕ отмены ---
+    after_alectinib_progression_type = Column(String(50))
+    after_alectinib_progression_sites = Column(JSON)
+    after_alectinib_progression_sites_other_text = Column(Text)
+    after_alectinib_progression_date = Column(DateTime)
+    
+    # Следующая линия
+    next_line_treatments = Column(JSON)
     next_line_start_date = Column(DateTime)
     progression_on_next_line = Column(Boolean)
-    alectinib_progression_type = Column(String(50))  # NEW: олигопрогрессирование / системное / нет
-    alectinib_progression_sites = Column(JSON)  # NEW: массив локализаций
-    alectinib_progression_sites_other_text = Column(Text)  # NEW: Текстовое поле для "Другое"
-    alectinib_progression_date = Column(DateTime)  # NEW: Дата прогрессирования
     progression_on_next_line_date = Column(DateTime)
-    next_line_treatments_other_text = Column(Text) # NEW: Поле для свободного ввода "Другое"
+    next_line_progression_type = Column(String(50))
+    next_line_progression_sites = Column(JSON)
+    next_line_progression_sites_other_text = Column(Text)
+    next_line_treatments_other_text = Column(Text)
     next_line_end_date = Column(DateTime)
     total_lines_after_alectinib = Column(Integer)
     
-    # Статус пациента
-    current_status = Column(String(50))  # жив / умер / ушел из-под наблюдения
+    # ROS1
+    ros1_fusion_variant = Column(String(50))
+    pdl1_status = Column(String(20))
+    pdl1_tps = Column(Float)
+    radical_treatment_conducted = Column(Boolean)
+    radical_surgery_conducted = Column(Boolean)
+    radical_surgery_date = Column(DateTime)
+    radical_surgery_type = Column(String(100))
+    radical_surgery_type_other = Column(Text)
+    radical_crt_conducted = Column(Boolean)
+    radical_crt_start_date = Column(DateTime)
+    radical_crt_end_date = Column(DateTime)
+    radical_crt_consolidation = Column(Boolean)
+    radical_crt_consolidation_drug = Column(String(100))
+    radical_crt_consolidation_end_date = Column(DateTime)
+    radical_perioperative_therapy = Column(JSON)
+    radical_treatment_outcome = Column(String(50))
+    relapse_date = Column(DateTime)
+    metastatic_diagnosis_date = Column(DateTime)
+    metastatic_therapy_lines = Column(JSON)
+
+    # Статус
+    current_status = Column(String(50))
     last_contact_date = Column(DateTime)
-    
-    # Вычисляемые поля
-    age_at_diagnosis = Column(Integer)  # Авторасчет
+    age_at_diagnosis = Column(Integer)
     
     patient = relationship("Patient", back_populates="clinical_record")
 
 class Dictionary(Base):
     __tablename__ = 'dictionaries'
-    
     id = Column(Integer, primary_key=True, index=True)
-    category = Column(String(100), nullable=False, index=True)  # comorbidities, alk_methods и т.д.
+    category = Column(String(100), nullable=False, index=True)
     code = Column(String(100), nullable=False)
     value_ru = Column(String(500), nullable=False)
     is_active = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    parent = Column(String(100))
 
 class AuditLog(Base):
     __tablename__ = 'audit_logs'
-    
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    action = Column(String(100), nullable=False)  # create, update, delete, login, etc.
+    action = Column(String(100), nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    record_type = Column(String(50))  # patient, clinical_record, dictionary, etc.
+    record_type = Column(String(50))
     record_id = Column(Integer)
-    details = Column(JSON)  # Дополнительные детали операции
-    
+    details = Column(JSON)
     user = relationship("User", back_populates="audit_logs")
