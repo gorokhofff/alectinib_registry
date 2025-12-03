@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator, field_validator
+from pydantic import BaseModel, Field, validator, field_validator, model_validator
 from datetime import datetime
 from typing import Optional, List, Any
 from enum import Enum
@@ -177,6 +177,90 @@ class ClinicalRecordBase(BaseModel):
     def empty_string_to_none_float(cls, v):
         if v == "": return None
         return v
+
+    @field_validator('height')
+    def validate_height(cls, v):
+        if v is not None:
+            if v < 30 or v > 250:
+                raise ValueError('Рост должен быть в диапазоне от 30 до 250 см')
+        return v
+
+    @field_validator('weight')
+    def validate_weight(cls, v):
+        if v is not None:
+            if v < 10 or v > 300:
+                raise ValueError('Вес должен быть в диапазоне от 10 до 300 кг')
+        return v
+
+    @model_validator(mode='after')
+    def validate_dates_sequence(self):
+        def check_order(date_early, date_late, error_msg):
+            if date_early and date_late and date_early > date_late:
+                raise ValueError(error_msg)
+
+        def parse_date(d):
+            if not d: return None
+            if isinstance(d, datetime): return d
+            if isinstance(d, str):
+                try:
+                    return datetime.fromisoformat(d.replace('Z', ''))
+                except:
+                    try:
+                        return datetime.strptime(d, "%Y-%m-%d")
+                    except:
+                        return None
+            return None
+
+        # Общие проверки
+        check_order(self.birth_date, self.initial_diagnosis_date, 'Дата рождения не может быть позже даты диагноза')
+        
+        if self.current_status == 'DEAD':
+            check_order(self.initial_diagnosis_date, self.last_contact_date, 'Дата смерти не может быть раньше даты диагноза')
+
+        # --- ALK ---
+        if self.registry_type == 'ALK':
+            check_order(self.initial_diagnosis_date, self.alk_diagnosis_date, 'Дата ALK диагностики не может быть раньше даты основного диагноза')
+            check_order(self.initial_diagnosis_date, self.alectinib_start_date, 'Дата начала терапии не может быть раньше даты диагноза')
+            check_order(self.alectinib_start_date, self.alectinib_end_date, 'Дата окончания алектиниба не может быть раньше даты начала')
+            check_order(self.alectinib_start_date, self.progression_date, 'Дата прогрессирования не может быть раньше начала лечения')
+            check_order(self.alectinib_end_date, self.after_alectinib_progression_date, 'Дата прогрессирования после отмены не может быть раньше даты окончания терапии')
+
+        # --- ROS1 ---
+        if self.registry_type == 'ROS1':
+            check_order(self.initial_diagnosis_date, self.metastatic_diagnosis_date, 'Дата установления мтс стадии не может быть раньше первичного диагноза')
+            check_order(self.initial_diagnosis_date, self.radical_surgery_date, 'Дата операции не может быть раньше даты диагноза')
+            check_order(self.radical_crt_start_date, self.radical_crt_end_date, 'Дата окончания ХЛТ не может быть раньше даты начала')
+            check_order(self.radical_crt_end_date, self.radical_crt_consolidation_end_date, 'Окончание поддерживающей терапии должно быть после окончания ХЛТ')
+            check_order(self.radical_surgery_date, self.relapse_date, 'Дата рецидива не может быть раньше даты операции')
+            check_order(self.radical_crt_end_date, self.relapse_date, 'Дата рецидива не может быть раньше окончания ХЛТ')
+
+            # Валидация линий терапии ROS1 (JSON)
+            if self.metastatic_therapy_lines and isinstance(self.metastatic_therapy_lines, list):
+                prev_line_end = None
+                for i, line in enumerate(self.metastatic_therapy_lines):
+                    start = parse_date(line.get('start_date'))
+                    end = parse_date(line.get('end_date'))
+                    prog = parse_date(line.get('progression_date'))
+                    
+                    if start and end and start > end:
+                        raise ValueError(f'В линии терапии {i+1}: Дата окончания раньше даты начала')
+                    
+                    if start and prog and start > prog:
+                        raise ValueError(f'В линии терапии {i+1}: Дата прогрессирования раньше даты начала лечения')
+                        
+                    if start and self.initial_diagnosis_date and start < self.initial_diagnosis_date:
+                        raise ValueError(f'В линии терапии {i+1}: Дата начала лечения раньше даты диагноза')
+
+            # Валидация периоперационной терапии ROS1 (JSON)
+            if self.radical_perioperative_therapy and isinstance(self.radical_perioperative_therapy, list):
+                for i, line in enumerate(self.radical_perioperative_therapy):
+                    start = parse_date(line.get('start_date'))
+                    end = parse_date(line.get('end_date'))
+                    
+                    if start and end and start > end:
+                        raise ValueError(f'В периоперационной линии {i+1}: Дата окончания раньше начала')
+
+        return self
 
 class ClinicalRecordCreate(ClinicalRecordBase): pass
 class ClinicalRecordUpdate(ClinicalRecordBase): pass

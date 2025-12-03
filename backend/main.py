@@ -627,14 +627,19 @@ def get_patient_completion(
 @app.get("/api/export/patients")
 def export_patients_excel(
     institution_id: Optional[int] = None,
+    registry_type: Optional[str] = None,  # Добавляем параметр
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
-    # Build query
-    query = db.query(Patient).filter(Patient.is_active == True)
+    # Строим запрос с join к ClinicalRecord для фильтрации
+    query = db.query(Patient).join(ClinicalRecord).filter(Patient.is_active == True)
     
     if institution_id:
         query = query.filter(Patient.institution_id == institution_id)
+        
+    # Добавляем фильтрацию по типу регистра
+    if registry_type:
+        query = query.filter(ClinicalRecord.registry_type == registry_type)
     
     patients = query.all()
     

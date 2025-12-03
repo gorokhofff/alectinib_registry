@@ -79,6 +79,15 @@ function TherapyLinesTable({ value = [], onChange, disabled = false, dictionarie
             line.progression_type === 'OLIGO' || 
             (line.progression_sites && line.progression_sites.includes('CNS'));
 
+          // Валидация дат
+          const dateError = line.start_date && line.end_date && new Date(line.start_date) > new Date(line.end_date) 
+            ? 'Дата окончания раньше начала' 
+            : null;
+          
+          const progDateError = line.start_date && line.progression_date && new Date(line.progression_date) < new Date(line.start_date)
+            ? 'Дата прогрессирования раньше начала лечения'
+            : null;
+
           return (
             <div key={index} className={`${styles.lineCard} ${isExpanded ? styles.expanded : ''}`}>
               <div className={styles.lineHeader} onClick={() => toggleExpand(index)}>
@@ -98,8 +107,9 @@ function TherapyLinesTable({ value = [], onChange, disabled = false, dictionarie
 
                   <div className={styles.gridTwo}>
                     <div className={styles.formGroup}><label className={styles.formLabel}>Дата начала *</label><input type="date" value={line.start_date} onChange={(e) => handleLineChange(index, 'start_date', e.target.value)} disabled={disabled} className={styles.formInput} required /></div>
-                    <div className={styles.formGroup}><label className={styles.formLabel}>Дата окончания</label><input type="date" value={line.end_date} onChange={(e) => handleLineChange(index, 'end_date', e.target.value)} disabled={disabled} className={styles.formInput} /></div>
+                    <div className={styles.formGroup}><label className={styles.formLabel}>Дата окончания</label><input type="date" value={line.end_date} onChange={(e) => handleLineChange(index, 'end_date', e.target.value)} disabled={disabled} className={`${styles.formInput} ${dateError ? 'error' : ''}`} /></div>
                   </div>
+                  {dateError && <div style={{color: 'red', fontSize: '12px', marginTop: '-10px', marginBottom: '10px'}}>{dateError}</div>}
 
                   <div className={styles.gridTwo}>
                     <div className={styles.formGroup}>
@@ -125,7 +135,7 @@ function TherapyLinesTable({ value = [], onChange, disabled = false, dictionarie
                     <div className={styles.gridTwo}>
                         <div className={styles.formGroup}>
                             <label className={styles.formLabel}>Дата прогрессирования</label>
-                            <input type="date" value={line.progression_date} onChange={(e) => handleLineChange(index, 'progression_date', e.target.value)} className={styles.formInput} />
+                            <input type="date" value={line.progression_date} onChange={(e) => handleLineChange(index, 'progression_date', e.target.value)} className={`${styles.formInput} ${progDateError ? 'error' : ''}`} />
                         </div>
                         <div className={styles.formGroup}>
                             <label className={styles.formLabel}>Тип прогрессирования</label>
@@ -135,6 +145,7 @@ function TherapyLinesTable({ value = [], onChange, disabled = false, dictionarie
                             </select>
                         </div>
                     </div>
+                    {progDateError && <div style={{color: 'red', fontSize: '12px', marginTop: '-10px', marginBottom: '10px'}}>{progDateError}</div>}
                     
                     <div className={styles.formGroup}>
                         <label className={styles.formLabel}>Локализация прогрессирования</label>
