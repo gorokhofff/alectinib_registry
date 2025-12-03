@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
+from sqlalchemy.inspection import inspect
 from typing import List, Optional
 from datetime import date, datetime, timedelta
 import json
@@ -59,58 +60,165 @@ def calculate_age(birth_date: datetime, diagnosis_date: datetime) -> int:
 # Вспомогательная функция для расчета процента заполнения
 def calculate_completion_percentage(clinical_record) -> CompletionResponse:
     if not clinical_record:
-        return CompletionResponse(filled_fields=0, total_fields=88, completion_percentage=0.0)
+        return CompletionResponse(filled_fields=0, total_fields=0, completion_percentage=0.0)
     
-    # Определяем набор полей в зависимости от типа регистра записи
-    reg_type = getattr(clinical_record, 'registry_type', 'ALK')
-    
-    common_fields = [
+    # Helper to get value safely
+    def get_val(field):
+        return getattr(clinical_record, field, None)
+
+    # Helper to check if value is meaningfully filled
+    def is_filled(val):
+        if val is None: return False
+        if isinstance(val, str) and not val.strip(): return False
+        if isinstance(val, list) and len(val) == 0: return False
+        return True
+
+    reg_type = get_val('registry_type') or 'ALK'
+    expected_fields = []
+
+    # --- 1. Common Fields (Always expected) ---
+    expected_fields.extend([
         'patient_code', 'gender', 'birth_date', 'height', 'weight', 
         'smoking_status', 'initial_diagnosis_date', 'tnm_stage', 
-        'histology', 'current_status', 'last_contact_date'
-    ]
+        'histology', 'current_status', 'last_contact_date',
+        'comorbidities' # Expect array to be at least present/touched
+    ])
     
+    # Conditional: Comorbidities 'OTHER'
+    comor = get_val('comorbidities')
+    if comor and 'OTHER' in comor:
+        expected_fields.append('comorbidities_other_text')
+
+    # --- 2. Previous Therapy ---
+    expected_fields.append('had_previous_therapy')
+    # If explicitly True, expect details
+    if get_val('had_previous_therapy') is True:
+        expected_fields.extend([
+            'previous_therapy_types', 
+            'previous_therapy_start_date', 
+            'previous_therapy_end_date', 
+            'previous_therapy_response', 
+            'previous_therapy_stop_reason'
+        ])
+
+    # --- 3. Registry Specific Logic ---
     if reg_type == 'ROS1':
-        specific_fields = [
+        # ROS1 Specifics
+        expected_fields.extend([
             'ros1_fusion_variant', 'pdl1_status', 
-            'radical_treatment_conducted', 
-            'metastatic_diagnosis_date'
-        ]
-    else: # ALK
-        specific_fields = [
-            'alk_diagnosis_date', 'alk_fusion_variant',
-            'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
-            'maximum_response', 'alectinib_therapy_status'
-        ]
-    
-    all_fields = common_fields + specific_fields
-    
-    # Array fields (check length > 0)
-    array_fields = ['comorbidities', 'metastases_sites']
-    if reg_type == 'ALK':
-        array_fields.extend(['alk_methods', 'previous_therapy_types', 'progression_sites'])
-    elif reg_type == 'ROS1':
-        array_fields.extend(['metastatic_therapy_lines']) # Проверка наличия линий
-    
-    filled_fields = 0
-    
-    # Check scalar fields
-    for field in all_fields:
-        value = getattr(clinical_record, field, None)
-        if value is not None and value != "":
-            filled_fields += 1
+            'tp53_comutation', 'ttf1_expression',
+            'metastatic_diagnosis_date', 'metastatic_therapy_lines'
+        ])
+        
+        # PD-L1 Conditional
+        pdl1 = get_val('pdl1_status')
+        if pdl1 in ['TPS_LESS_1', 'TPS_1_49', 'TPS_MORE_50']:
+            expected_fields.append('pdl1_tps')
             
-    # Check array fields
-    for field in array_fields:
-        value = getattr(clinical_record, field, None)
-        if value and isinstance(value, list) and len(value) > 0:
-             filled_fields += 1
-    
-    total_fields = len(all_fields) + len(array_fields)
-    completion_percentage = round((filled_fields / total_fields) * 100, 1) if total_fields > 0 else 0.0
+        # Radical Treatment Section
+        expected_fields.append('radical_treatment_conducted')
+        if get_val('radical_treatment_conducted') is True:
+            # Surgery
+            expected_fields.append('radical_surgery_conducted')
+            if get_val('radical_surgery_conducted') is True:
+                expected_fields.extend(['radical_surgery_date', 'radical_surgery_type'])
+                if get_val('radical_surgery_type') == 'OTHER':
+                    expected_fields.append('radical_surgery_type_other')
+            
+            # CRT
+            expected_fields.append('radical_crt_conducted')
+            if get_val('radical_crt_conducted') is True:
+                expected_fields.extend(['radical_crt_start_date', 'radical_crt_end_date', 'radical_crt_consolidation'])
+                if get_val('radical_crt_consolidation') is True:
+                    expected_fields.extend(['radical_crt_consolidation_drug', 'radical_crt_consolidation_end_date'])
+            
+            # Perioperative & Outcome
+            expected_fields.extend(['radical_perioperative_therapy', 'radical_treatment_outcome'])
+            if get_val('radical_treatment_outcome') == 'RELAPSE':
+                expected_fields.append('relapse_date')
+
+    else: 
+        # ALK Specifics
+        expected_fields.extend([
+            'alk_diagnosis_date', 'alk_methods', 'alk_fusion_variant',
+            'tp53_comutation', 'ttf1_expression', 'metastatic_disease_date',
+            'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
+            'metastases_sites', 'cns_metastases', 'alectinib_therapy_status',
+            'maximum_response', 'earliest_response_date', 
+            'progression_during_alectinib'
+        ])
+        
+        # Metastases Other
+        mets = get_val('metastases_sites')
+        if mets and 'OTHER' in mets:
+            expected_fields.append('metastases_sites_other_text')
+            
+        # CNS Details
+        if get_val('cns_metastases') is True:
+            expected_fields.extend([
+                'cns_measurable', 'cns_symptomatic', 
+                'cns_radiotherapy', 'cns_radiotherapy_timing',
+                'intracranial_response'
+            ])
+
+        # Progression during therapy
+        prog_during = get_val('progression_during_alectinib')
+        if is_filled(prog_during) and prog_during != 'NONE':
+            expected_fields.extend([
+                'local_treatment_at_progression', 'progression_date', 
+                'continued_after_progression', 'progression_sites'
+            ])
+            prog_sites = get_val('progression_sites')
+            if prog_sites and 'OTHER' in prog_sites:
+                expected_fields.append('progression_sites_other_text')
+
+        # Therapy Status: STOPPED
+        status = get_val('alectinib_therapy_status')
+        # Check normalized value (case-insensitive)
+        if status and status.lower() == 'stopped':
+            expected_fields.extend([
+                'alectinib_end_date', 'alectinib_stop_reason', 
+                'had_treatment_interruption', 'had_dose_reduction',
+                'next_line_treatments'
+            ])
+            
+            # Interruption details
+            if get_val('had_treatment_interruption') is True:
+                expected_fields.extend(['interruption_reason', 'interruption_duration_months'])
+            
+            # Next Line Details
+            nl_treats = get_val('next_line_treatments')
+            # If treatments selected, expect details
+            if is_filled(nl_treats):
+                if 'OTHER' in nl_treats:
+                    expected_fields.append('next_line_treatments_other_text')
+                
+                expected_fields.extend(['next_line_start_date', 'next_line_end_date', 'progression_on_next_line', 'total_lines_after_alectinib'])
+                
+                if get_val('progression_on_next_line') is True:
+                    expected_fields.extend(['progression_on_next_line_date', 'next_line_progression_type', 'next_line_progression_sites'])
+                    nl_sites = get_val('next_line_progression_sites')
+                    if nl_sites and 'OTHER' in nl_sites:
+                        expected_fields.append('next_line_progression_sites_other_text')
+
+            # After Alectinib Progression (Hidden fields)
+            # Only expect if data is present (implying "Yes" was chosen in UI)
+            if is_filled(get_val('after_alectinib_progression_type')):
+                expected_fields.extend(['after_alectinib_progression_type', 'after_alectinib_progression_date', 'after_alectinib_progression_sites'])
+                if get_val('after_alectinib_progression_sites') and 'OTHER' in get_val('after_alectinib_progression_sites'):
+                    expected_fields.append('after_alectinib_progression_sites_other_text')
+
+    # 4. Calculate Percentage
+    filled_count = 0
+    for field in expected_fields:
+        if is_filled(get_val(field)):
+            filled_count += 1
+            
+    total_fields = len(expected_fields)
+    completion_percentage = round((filled_count / total_fields) * 100, 1) if total_fields > 0 else 0.0
     
     return CompletionResponse(
-        filled_fields=filled_fields,
+        filled_fields=filled_count,
         total_fields=total_fields,
         completion_percentage=completion_percentage
     )
@@ -627,7 +735,8 @@ def get_patient_completion(
 @app.get("/api/export/patients")
 def export_patients_excel(
     institution_id: Optional[int] = None,
-    registry_type: Optional[str] = None,  # Добавляем параметр
+    registry_type: Optional[str] = None,
+    mode: str = Query("standard", enum=["standard", "full"]), # Новый параметр режима
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -637,7 +746,6 @@ def export_patients_excel(
     if institution_id:
         query = query.filter(Patient.institution_id == institution_id)
         
-    # Добавляем фильтрацию по типу регистра
     if registry_type:
         query = query.filter(ClinicalRecord.registry_type == registry_type)
     
@@ -647,70 +755,120 @@ def export_patients_excel(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Header
-    header = [
-        'ID пациента', 'Код пациента', 'Учреждение', 'Пол', 'Дата рождения', 
-        'Возраст на момент диагноза', 'Рост', 'Вес', 'Статус курения',
-        'Дата диагноза', 'TNM стадия', 'Гистология', 'Дата диагностики ALK',
-        'Методы ALK', 'Вариант слияния ALK', 'TP53 комутация', 'TTF1 экспрессия',
-        'Дата начала алектиниба', 'Стадия на момент начала', 'ECOG',
-        'Максимальный ответ', 'Прогрессирование', 'Текущий статус',
-        'Дата последнего контакта', 'Дата заполнения', 'Заполненность'
-    ]
-    writer.writerow(header)
-    
-    # Data rows
-    for patient in patients:
-        cr = patient.clinical_record
-        if cr:
-            completion = calculate_completion_percentage(cr)
-            completion_str = f"{completion.filled_fields}/{completion.total_fields}"
-            
-            row = [
-                patient.id,
-                cr.patient_code or f"ID-{patient.id}",
-                patient.institution.name,
-                cr.gender or '',
-                cr.birth_date.strftime('%d-%m-%Y') if cr.birth_date else '',
-                cr.age_at_diagnosis or '',
-                cr.height or '',
-                cr.weight or '',
-                cr.smoking_status or '',
-                cr.initial_diagnosis_date.strftime('%d-%m-%Y') if cr.initial_diagnosis_date else '',
-                cr.tnm_stage or '',
-                cr.histology or '',
-                cr.alk_diagnosis_date.strftime('%d-%m-%Y') if cr.alk_diagnosis_date else '',
-                ', '.join(cr.alk_methods) if cr.alk_methods else '',
-                cr.alk_fusion_variant or '',
-                cr.tp53_comutation or '',
-                cr.ttf1_expression or '',
-                cr.alectinib_start_date.strftime('%d-%m-%Y') if cr.alectinib_start_date else '',
-                cr.stage_at_alectinib_start or '',
-                cr.ecog_at_start or '',
-                cr.maximum_response or '',
-                cr.progression_during_alectinib or '',
-                cr.current_status or '',
-                cr.last_contact_date.strftime('%d-%m-%Y') if cr.last_contact_date else '',
-                cr.date_filled.strftime('%d-%m-%Y') if cr.date_filled else '',
-                completion_str
-            ]
-        else:
-            row = [patient.id, f"ID-{patient.id}", patient.institution.name] + [''] * 23
+    if mode == "standard":
+        # Header for standard export
+        header = [
+            'ID пациента', 'Код пациента', 'Учреждение', 'Пол', 'Дата рождения', 
+            'Возраст на момент диагноза', 'Рост', 'Вес', 'Статус курения',
+            'Дата диагноза', 'TNM стадия', 'Гистология', 'Дата диагностики ALK',
+            'Методы ALK', 'Вариант слияния ALK', 'TP53 комутация', 'TTF1 экспрессия',
+            'Дата начала алектиниба', 'Стадия на момент начала', 'ECOG',
+            'Максимальный ответ', 'Прогрессирование', 'Текущий статус',
+            'Дата последнего контакта', 'Дата заполнения', 'Заполненность'
+        ]
+        writer.writerow(header)
         
-        writer.writerow(row)
+        # Data rows for standard export
+        for patient in patients:
+            cr = patient.clinical_record
+            if cr:
+                completion = calculate_completion_percentage(cr)
+                completion_str = f"{completion.filled_fields}/{completion.total_fields}"
+                
+                row = [
+                    patient.id,
+                    cr.patient_code or f"ID-{patient.id}",
+                    patient.institution.name,
+                    cr.gender or '',
+                    cr.birth_date.strftime('%d-%m-%Y') if cr.birth_date else '',
+                    cr.age_at_diagnosis or '',
+                    cr.height or '',
+                    cr.weight or '',
+                    cr.smoking_status or '',
+                    cr.initial_diagnosis_date.strftime('%d-%m-%Y') if cr.initial_diagnosis_date else '',
+                    cr.tnm_stage or '',
+                    cr.histology or '',
+                    cr.alk_diagnosis_date.strftime('%d-%m-%Y') if cr.alk_diagnosis_date else '',
+                    ', '.join(cr.alk_methods) if cr.alk_methods else '',
+                    cr.alk_fusion_variant or '',
+                    cr.tp53_comutation or '',
+                    cr.ttf1_expression or '',
+                    cr.alectinib_start_date.strftime('%d-%m-%Y') if cr.alectinib_start_date else '',
+                    cr.stage_at_alectinib_start or '',
+                    cr.ecog_at_start or '',
+                    cr.maximum_response or '',
+                    cr.progression_during_alectinib or '',
+                    cr.current_status or '',
+                    cr.last_contact_date.strftime('%d-%m-%Y') if cr.last_contact_date else '',
+                    cr.date_filled.strftime('%d-%m-%Y') if cr.date_filled else '',
+                    completion_str
+                ]
+            else:
+                row = [patient.id, f"ID-{patient.id}", patient.institution.name] + [''] * 23
+            
+            writer.writerow(row)
+            
+    elif mode == "full":
+        # Интроспекция колонок модели ClinicalRecord
+        columns = [c.key for c in inspect(ClinicalRecord).c]
+        
+        # Исключаем служебные поля, которые дублируются или не нужны
+        exclude_cols = ['id', 'patient_id']
+        columns = [c for c in columns if c not in exclude_cols]
+        
+        # Формируем заголовок: поля пациента + поля клинической записи
+        header = ['patient_id', 'institution_name', 'created_at'] + columns
+        writer.writerow(header)
+        
+        for patient in patients:
+            cr = patient.clinical_record
+            if cr:
+                row = [
+                    patient.id,
+                    patient.institution.name,
+                    patient.created_at.strftime('%d-%m-%Y %H:%M:%S')
+                ]
+                
+                # Динамическое заполнение полей
+                for col in columns:
+                    val = getattr(cr, col, None)
+                    
+                    # Обработка типов данных
+                    if isinstance(val, (list, dict)):
+                        # Сериализация JSON в строку
+                        val = json.dumps(val, ensure_ascii=False)
+                    elif isinstance(val, datetime):
+                        val = val.strftime('%d.%m.%Y')
+                    elif isinstance(val, bool):
+                        val = "Да" if val else "Нет"
+                    elif val is None:
+                        val = ""
+                        
+                    row.append(val)
+                writer.writerow(row)
+            else:
+                # Если записи нет, заполняем пустые поля
+                row = [
+                    patient.id,
+                    patient.institution.name,
+                    patient.created_at.strftime('%d-%m-%Y %H:%M:%S')
+                ] + [''] * len(columns)
+                writer.writerow(row)
     
     # Prepare response
     output.seek(0)
     
     # Convert to bytes
     csv_content = output.getvalue().encode('utf-8-sig')  # UTF-8 with BOM for Excel
-    csv_io = io.BytesIO(csv_content)
+    
+    filename_prefix = "patients_full_export" if mode == "full" else "patients_export"
+    filename = f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     
     return StreamingResponse(
         io.BytesIO(csv_content),
         media_type='text/csv',
         headers={
-            'Content-Disposition': f'attachment; filename="patients_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+            'Content-Disposition': f'attachment; filename="{filename}"'
         }
     )
 

@@ -22,6 +22,18 @@ function PatientFormPageNew({ user }) {
   const [dictionaries, setDictionaries] = useState({})
   const [currentSection, setCurrentSection] = useState('current-status')
   
+  // Состояние видимости критериев (инициализация из localStorage)
+  const [showCriteria, setShowCriteria] = useState(() => {
+    const saved = localStorage.getItem('showAlkCriteria')
+    return saved !== 'false' // По умолчанию true
+  })
+
+  const toggleCriteria = () => {
+    const newState = !showCriteria
+    setShowCriteria(newState)
+    localStorage.setItem('showAlkCriteria', newState)
+  }
+  
   const [formData, setFormData] = useState({
     // Общие
     patient_code: '',
@@ -43,6 +55,7 @@ function PatientFormPageNew({ user }) {
     tnm_stage: '',
     metastatic_disease_date: '',
     histology: '',
+    histology_other: '',
     
     // ALK
     alk_diagnosis_date: '',
@@ -55,10 +68,12 @@ function PatientFormPageNew({ user }) {
     had_previous_therapy: false,
     no_previous_therapy: false,
     previous_therapy_types: [],
+    previous_therapy_types_other: '',
     previous_therapy_start_date: '',
     previous_therapy_end_date: '',
     previous_therapy_response: '',
     previous_therapy_stop_reason: '',
+    previous_therapy_stop_reason_other: '',
     alectinib_start_date: '',
     stage_at_alectinib_start: '',
     ecog_at_start: '',
@@ -68,7 +83,7 @@ function PatientFormPageNew({ user }) {
     cns_measurable: '',
     cns_symptomatic: '',
     cns_radiotherapy: '',
-    cns_radiotherapy_timing: '', 
+    // cns_radiotherapy_timing: '', REMOVED
     alectinib_therapy_status: '', 
     maximum_response: '',
     earliest_response_date: '',
@@ -80,11 +95,12 @@ function PatientFormPageNew({ user }) {
     progression_sites: [],
     progression_sites_other_text: '',
     progression_date: '',
-    continued_after_progression: false,
+    continued_after_progression: null, // Changed to null/true/false for Radio
     
     // Завершение
     alectinib_end_date: '',
     alectinib_stop_reason: '',
+    alectinib_stop_reason_other: '', // NEW
     had_treatment_interruption: false,
     interruption_reason: '',
     interruption_duration_months: '',
@@ -134,20 +150,18 @@ function PatientFormPageNew({ user }) {
   })
 
   // Date validation rules
-  // type: 'before' -> Ошибка, если текущая дата < compareWith (раньше)
-  // type: 'after' -> Ошибка, если текущая дата > compareWith (позже)
   const dateValidationRules = {
     // --- ОБЩИЕ ---
     birth_date: [
       {
-        type: 'after', // Ошибка если родился ПОСЛЕ диагноза
+        type: 'after',
         compareWith: 'initial_diagnosis_date',
         message: 'Дата рождения не может быть позже даты диагноза'
       }
     ],
     last_contact_date: [
       {
-        type: 'before', // Ошибка если контакт ДО диагноза
+        type: 'before',
         compareWith: 'initial_diagnosis_date',
         message: 'Дата последнего контакта/смерти не может быть раньше даты диагноза'
       }
@@ -161,18 +175,41 @@ function PatientFormPageNew({ user }) {
         message: 'Дата диагностики ALK не может быть раньше даты первичного диагноза'
       }
     ],
+    
+    // ПРЕДЫДУЩАЯ ТЕРАПИЯ
+    previous_therapy_start_date: [
+      {
+        type: 'before',
+        compareWith: 'initial_diagnosis_date',
+        message: 'Дата начала терапии не может быть раньше даты диагноза'
+      }
+    ],
+    previous_therapy_end_date: [
+      {
+        type: 'before',
+        compareWith: 'previous_therapy_start_date',
+        message: 'Дата окончания не может быть раньше даты начала'
+      }
+    ],
+
+    // ЛЕЧЕНИЕ АЛЕКТИНИБОМ
     alectinib_start_date: [
       {
         type: 'before',
         compareWith: 'initial_diagnosis_date',
         message: 'Лечение не может начаться раньше постановки диагноза'
+      },
+      {
+        type: 'before',
+        compareWith: 'previous_therapy_end_date',
+        message: 'Лечение не может начаться раньше окончания предыдущей терапии'
       }
     ],
-    alectinib_end_date: [
+    earliest_response_date: [
       {
         type: 'before',
         compareWith: 'alectinib_start_date',
-        message: 'Дата окончания не может быть раньше даты начала'
+        message: 'Дата достижения ответа не может быть раньше даты начала лечения'
       }
     ],
     progression_date: [
@@ -180,6 +217,23 @@ function PatientFormPageNew({ user }) {
         type: 'before',
         compareWith: 'alectinib_start_date',
         message: 'Прогрессирование не может быть раньше начала лечения'
+      },
+      {
+        type: 'before',
+        compareWith: 'earliest_response_date',
+        message: 'Дата прогрессирования не может быть раньше даты достижения ответа'
+      }
+    ],
+    alectinib_end_date: [
+      {
+        type: 'before',
+        compareWith: 'alectinib_start_date',
+        message: 'Дата окончания не может быть раньше даты начала'
+      },
+      {
+        type: 'before',
+        compareWith: 'earliest_response_date',
+        message: 'Дата окончания не может быть раньше даты достижения ответа'
       }
     ],
     after_alectinib_progression_date: [
@@ -189,17 +243,24 @@ function PatientFormPageNew({ user }) {
         message: 'Прогрессирование после отмены должно быть позже даты отмены'
       }
     ],
-    
-    // --- ПРЕДЫДУЩАЯ ТЕРАПИЯ ---
-    previous_therapy_end_date: [
+
+    // СЛЕДУЮЩАЯ ЛИНИЯ
+    next_line_start_date: [
       {
         type: 'before',
-        compareWith: 'previous_therapy_start_date',
+        compareWith: 'alectinib_end_date',
+        message: 'Дата начала следующей линии не может быть раньше окончания терапии алектинибом'
+      }
+    ],
+    next_line_end_date: [
+      {
+        type: 'before',
+        compareWith: 'next_line_start_date',
         message: 'Дата окончания не может быть раньше даты начала'
       }
     ],
 
-    // --- ROS1 / РАДИКАЛЬНОЕ ЛЕЧЕНИЕ ---
+    // --- ROS1 ---
     radical_surgery_date: [
       {
         type: 'before',
@@ -237,6 +298,8 @@ function PatientFormPageNew({ user }) {
     ]
   }
 
+  const DATE_TOOLTIP = "Используйте 15 число месяца, если точная дата неизвестна"
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -271,7 +334,6 @@ function PatientFormPageNew({ user }) {
             try { cr.metastatic_therapy_lines = JSON.parse(cr.metastatic_therapy_lines) } catch { cr.metastatic_therapy_lines = [] }
         }
 
-        // --- Инициализация UI State для радиокнопки ---
         if (cr.after_alectinib_progression_type || cr.after_alectinib_progression_date) {
             cr.has_after_alectinib_progression = true
         } else {
@@ -315,10 +377,11 @@ function PatientFormPageNew({ user }) {
     return sectionsList.map(s => ({...s, status: calculateSectionStatus(s.id)}))
   }
 
+  // Обновленные названия разделов для ALK
   const alkSectionsRaw = [
     { id: 'current-status', title: 'Текущий статус', icon: '📊' },
-    { id: 'patient-basic', title: 'Базовые данные', icon: '👤' },
-    { id: 'diagnosis-alk', title: 'Диагноз и ALK', icon: '🔍' },
+    { id: 'patient-basic', title: 'Код пациента и базовые данные', icon: '👤' },
+    { id: 'diagnosis-alk', title: 'Диагноз и ALK диагностика', icon: '🔍' },
     { id: 'previous-therapy', title: 'Предыдущая терапия', icon: '💊' },
     { id: 'alectinib-complete', title: 'Лечение алектинибом', icon: '🎯' },
     { id: 'next-line', title: 'Следующая линия', icon: '➡️' }
@@ -338,7 +401,6 @@ function PatientFormPageNew({ user }) {
     let val = value
     if (type === 'checkbox') val = checked
     
-    // Безопасное получение атрибута data-type
     if (e.target.getAttribute && e.target.getAttribute('data-type') === 'bool-radio') {
         val = value === 'true'
     }
@@ -346,7 +408,6 @@ function PatientFormPageNew({ user }) {
     setFormData(prev => {
         const updated = { ...prev, [name]: val }
         
-        // Авто-сброс при изменении "Прогрессирование после отмены"
         if (name === 'has_after_alectinib_progression' && val === false) {
              updated.after_alectinib_progression_type = ''
              updated.after_alectinib_progression_date = null
@@ -369,9 +430,6 @@ function PatientFormPageNew({ user }) {
     if (name === 'metastases_sites' && Array.isArray(val) && val.includes('CNS')) {
          setFormData(prev => ({ ...prev, cns_metastases: true }))
     }
-    if (name === 'no_previous_therapy' && checked) {
-      setFormData(prev => ({ ...prev, had_previous_therapy: false, previous_therapy_types: [] }))
-    }
   }
 
   const handleMultiSelect = (name, value) => {
@@ -392,7 +450,6 @@ function PatientFormPageNew({ user }) {
     setError('')
     try {
         const preparedData = { ...formData }
-        // Удаляем UI-only поле перед отправкой
         delete preparedData.has_after_alectinib_progression
         
         Object.keys(preparedData).forEach(key => {
@@ -437,12 +494,22 @@ function PatientFormPageNew({ user }) {
     </div>
   )
 
-  const renderMultiSelect = (name, category, label) => {
+  const renderMultiSelect = (name, category, label, required=false) => {
     let options = dictionaries[category] || []
     const selected = formData[name] || []
     if (name === 'metastases_sites') options = options.filter(opt => opt.code !== 'CNS')
     return (
-      <div className="form-group"><label className="form-label">{label}</label><div className="checkbox-group">{options.map(opt => (<label key={opt.code} className="checkbox-label"><input type="checkbox" checked={selected.includes(opt.code)} onChange={() => handleMultiSelect(name, opt.code)} /><span>{opt.value_ru}</span></label>))}</div></div>
+      <div className="form-group">
+        <label className="form-label">{label}{required && <span className="required">*</span>}</label>
+        <div className="checkbox-group">
+          {options.map(opt => (
+            <label key={opt.code} className="checkbox-label">
+              <input type="checkbox" checked={selected.includes(opt.code)} onChange={() => handleMultiSelect(name, opt.code)} />
+              <span>{opt.value_ru}</span>
+            </label>
+          ))}
+        </div>
+      </div>
     )
   }
 
@@ -451,108 +518,343 @@ function PatientFormPageNew({ user }) {
     const isALK = registryType === 'ALK'
 
     switch(currentSection) {
-      case 'current-status': return <div className="card"><h3>Текущий статус</h3><div className="grid grid-2">{renderSelect('current_status', 'current_status', 'Статус', true)}<DateValidation name="last_contact_date" label="Дата последнего контакта" value={formData.last_contact_date} onChange={handleChange} validationRules={dateValidationRules.last_contact_date} otherDates={formData} /></div></div>
-      case 'patient-basic': return (
-        <div className="card"><h3>Базовые данные</h3>
-          <div className="grid grid-2">
-            <div className="form-group"><label className="form-label">Код пациента</label><input type="text" name="patient_code" value={formData.patient_code} onChange={handleChange} className="form-input" /></div>
-            <DateValidation name="date_filled" label="Дата заполнения" value={formData.date_filled} onChange={handleChange} />
-            <div className="form-group"><label className="form-label">Пол</label><select name="gender" value={formData.gender} onChange={handleChange} className="form-select"><option value="">...</option><option value="м">М</option><option value="ж">Ж</option></select></div>
-            <DateValidation name="birth_date" label="Дата рождения" value={formData.birth_date} onChange={handleChange} validationRules={dateValidationRules.birth_date} otherDates={formData} />
-            
-            <div className="form-group">
-              <label className="form-label">Рост (см)</label>
-              <input
-                type="number"
-                name="height"
-                value={formData.height}
-                onChange={handleChange}
-                className={`form-input ${formData.height && (formData.height < 30 || formData.height > 250) ? 'error-border' : ''}`}
-                min="30"
-                max="250"
-                placeholder="см"
+      case 'current-status': 
+        return (
+          <div className="card">
+            <h3>Текущий статус пациента</h3>
+            <div className="grid grid-2">
+              {renderSelect('current_status', 'current_status', 'Статус', true)}
+              <DateValidation 
+                name="last_contact_date" 
+                label={formData.current_status === 'DEAD' ? 'Дата смерти' : 'Дата последнего контакта'} 
+                value={formData.last_contact_date} 
+                onChange={handleChange} 
+                validationRules={dateValidationRules.last_contact_date} 
+                otherDates={formData} 
+                tooltip={DATE_TOOLTIP}
               />
-              {formData.height && (formData.height < 30 || formData.height > 250) && (
-                <span className="form-error-text" style={{color: 'red', fontSize: '12px', display: 'block', marginTop: '4px'}}>
-                  Проверьте значение (30-250 см)
-                </span>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Вес (кг)</label>
-              <input
-                type="number"
-                name="weight"
-                value={formData.weight}
-                onChange={handleChange}
-                className={`form-input ${formData.weight && (formData.weight < 10 || formData.weight > 300) ? 'error-border' : ''}`}
-                min="10"
-                max="300"
-                placeholder="кг"
-              />
-              {formData.weight && (formData.weight < 10 || formData.weight > 300) && (
-                <span className="form-error-text" style={{color: 'red', fontSize: '12px', display: 'block', marginTop: '4px'}}>
-                  Проверьте значение (10-300 кг)
-                </span>
-              )}
             </div>
           </div>
-          {renderMultiSelect('comorbidities', 'comorbidities', 'Сопутствующие заболевания')}
-          {formData.comorbidities?.includes('OTHER') && <div className="form-group"><label className="form-label">Укажите другое</label><input type="text" name="comorbidities_other_text" value={formData.comorbidities_other_text} onChange={handleChange} className="form-input"/></div>}
-          {renderSelect('smoking_status', 'smoking_status', 'Статус курения')}
-        </div>
-      )
+        )
+
+      case 'patient-basic': 
+        return (
+          <>
+            <div className="card">
+              <h3>Код пациента и дата заполнения</h3>
+              <div className="grid grid-2">
+                <div className="form-group">
+                  <label className="form-label">Код пациента <span className="required">*</span></label>
+                  <input type="text" name="patient_code" value={formData.patient_code} onChange={handleChange} className="form-input" placeholder="Введите уникальный код пациента" required />
+                </div>
+                <DateValidation name="date_filled" label="Дата заполнения" value={formData.date_filled} onChange={handleChange} tooltip={DATE_TOOLTIP} required />
+              </div>
+            </div>
+
+            <div className="card">
+              <h3>Базовые данные пациента</h3>
+              <div className="grid grid-2">
+                <div className="form-group"><label className="form-label">Пол <span className="required">*</span></label><select name="gender" value={formData.gender} onChange={handleChange} className="form-select" required><option value="">...</option><option value="м">М</option><option value="ж">Ж</option></select></div>
+                <DateValidation name="birth_date" label="Дата рождения" value={formData.birth_date} onChange={handleChange} validationRules={dateValidationRules.birth_date} otherDates={formData} tooltip={DATE_TOOLTIP} required />
+                
+                <div className="form-group">
+                  <label className="form-label">Рост (см) <span className="required">*</span></label>
+                  <input type="number" name="height" value={formData.height} onChange={handleChange} className="form-input" min="30" max="250" placeholder="см" required />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Вес на начало лечения (кг) <span className="required">*</span></label>
+                  <input type="number" name="weight" value={formData.weight} onChange={handleChange} className="form-input" min="10" max="300" placeholder="кг" required />
+                </div>
+              </div>
+              {renderMultiSelect('comorbidities', 'comorbidities', 'Сопутствующие заболевания')}
+              {formData.comorbidities?.includes('OTHER') && <div className="form-group"><label className="form-label">Укажите другое</label><input type="text" name="comorbidities_other_text" value={formData.comorbidities_other_text} onChange={handleChange} className="form-input"/></div>}
+              {renderSelect('smoking_status', 'smoking_status', 'Статус курения', true)}
+            </div>
+          </>
+        )
       
       // ALK
-      case 'diagnosis-alk': if (!isALK) return null; return <><div className="card"><h3>Диагноз</h3><div className="grid grid-2"><DateValidation name="initial_diagnosis_date" label="Дата диагноза" value={formData.initial_diagnosis_date} onChange={handleChange} /><TNMSelect name="tnm_stage" label="Стадия TNM" value={formData.tnm_stage} onChange={handleChange} options={dictionaries.tnm_stage} /><div className="form-group"><label className="form-label">Дата мтс</label><DateValidation name="metastatic_disease_date" label="" value={formData.metastatic_disease_date} onChange={handleChange} /></div>{renderSelect('histology', 'histology', 'Гистология')}</div></div><div className="card"><h3>ALK Диагностика</h3><div className="grid grid-2"><DateValidation name="alk_diagnosis_date" label="Дата ALK" value={formData.alk_diagnosis_date} onChange={handleChange} validationRules={dateValidationRules.alk_diagnosis_date} otherDates={formData} />{renderSelect('alk_fusion_variant', 'alk_fusion_variant', 'Вариант')}{renderSelect('tp53_comutation', 'yes_no_unknown', 'TP53')}{renderSelect('ttf1_expression', 'yes_no_unknown', 'TTF1')}</div>{renderMultiSelect('alk_methods', 'alk_methods', 'Метод')}</div></>
-      case 'previous-therapy': return <div className="card"><h3>Предыдущая терапия</h3><div className="form-group"><label className="checkbox-label"><input type="checkbox" name="no_previous_therapy" checked={formData.no_previous_therapy} onChange={handleChange}/><span>Не было</span></label></div>{!formData.no_previous_therapy && <><div className="form-group"><label className="checkbox-label"><input type="checkbox" name="had_previous_therapy" checked={formData.had_previous_therapy} onChange={handleChange}/><span>Была терапия</span></label></div>{formData.had_previous_therapy && <><div className="form-group"><label className="form-label">Тип терапии *</label><select value={formData.previous_therapy_types?.[0] || ''} onChange={(e) => setFormData(p => ({ ...p, previous_therapy_types: [e.target.value] }))} className="form-select"><option value="">Выберите...</option>{(dictionaries.previous_therapy_types || []).map(opt => <option key={opt.code} value={opt.code}>{opt.value_ru}</option>)}</select></div><div className="grid grid-2"><DateValidation name="previous_therapy_start_date" label="Начало" value={formData.previous_therapy_start_date} onChange={handleChange} /><DateValidation name="previous_therapy_end_date" label="Конец" value={formData.previous_therapy_end_date} onChange={handleChange} validationRules={dateValidationRules.previous_therapy_end_date} otherDates={formData} />{renderSelect('previous_therapy_response', 'response', 'Эффект')}{renderSelect('previous_therapy_stop_reason', 'previous_therapy_stop_reason', 'Причина отмены')}</div></>}</>}</div>
-      case 'alectinib-complete': return <><div className="card"><h3>Лечение алектинибом</h3><div className="grid grid-2"><DateValidation name="alectinib_start_date" label="Начало" value={formData.alectinib_start_date} onChange={handleChange} validationRules={dateValidationRules.alectinib_start_date} otherDates={formData} />{renderSelect('stage_at_alectinib_start', 'stage_at_alectinib_start', 'Стадия')}{renderSelect('alectinib_therapy_status', 'alectinib_therapy_status', 'Статус терапии', true)}<div className="form-group"><label className="form-label">ECOG</label><input type="number" name="ecog_at_start" value={formData.ecog_at_start} onChange={handleChange} className="form-input" min="0" max="4"/></div></div>{renderMultiSelect('metastases_sites', 'metastases_sites', 'Локализация мтс')}{formData.metastases_sites?.includes('OTHER') && <div className="form-group"><input type="text" name="metastases_sites_other_text" value={formData.metastases_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}<div className="form-group"><label className="checkbox-label"><input type="checkbox" name="cns_metastases" checked={formData.cns_metastases} onChange={handleChange}/><span>Мтс в ЦНС</span></label></div>{formData.cns_metastases && <><div className="grid grid-3">{renderSelect('cns_measurable', 'cns_measurable', 'Измеряемость')}{renderSelect('cns_symptomatic', 'cns_symptomatic', 'Симптоматичность')}{renderSelect('cns_radiotherapy', 'cns_radiotherapy', 'Радиотерапия')}</div><div className="form-group"><label className="form-label">Когда была радиотерапия ЦНС?</label><select name="cns_radiotherapy_timing" value={formData.cns_radiotherapy_timing || ''} onChange={handleChange} className="form-select"><option value="">Выберите...</option><option value="before">До начала лечения алектинибом</option><option value="during">Во время лечения алектинибом</option><option value="none">Не проводилась</option></select></div></>}</div><div className="card"><h3>Эффективность</h3><div className="grid grid-2">{renderSelect('maximum_response', 'response', 'Макс. ответ')}<DateValidation name="earliest_response_date" label="Дата достижения наибольшего ответа" value={formData.earliest_response_date} onChange={handleChange} /></div></div><div className="card"><h3>Прогрессирование без отмены терапии Алектинибом</h3><div className="grid grid-2">{renderSelect('progression_during_alectinib', 'progression_type', 'Тип')}{formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' && <>{renderSelect('local_treatment_at_progression', 'local_treatment_at_progression', 'Локальное лечение')}<DateValidation name="progression_date" label="Дата" value={formData.progression_date} onChange={handleChange} validationRules={dateValidationRules.progression_date} otherDates={formData} /><div className="form-group"><label className="checkbox-label"><input type="checkbox" name="continued_after_progression" checked={formData.continued_after_progression} onChange={handleChange}/><span>Продолжение терапии</span></label></div></>}</div>{formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' && <>{renderMultiSelect('progression_sites', 'progression_sites', 'Локализация прогрессирования')}{formData.progression_sites?.includes('OTHER') && <div className="form-group"><input type="text" name="progression_sites_other_text" value={formData.progression_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}</>}</div>
-
-      {/* ПОЛЯ after_alectinib_progression_* */}
-      {formData.alectinib_therapy_status === 'stopped' && (
-        <div className="card">
-            <h3>Завершение и Прогрессирование после отмены</h3>
-            
-            <div className="grid grid-2">
-                <DateValidation name="alectinib_end_date" label="Дата окончания" value={formData.alectinib_end_date} onChange={handleChange} validationRules={dateValidationRules.alectinib_end_date} otherDates={formData} />
-                {renderSelect('alectinib_stop_reason', 'alectinib_stop_reason', 'Причина')}
-            </div>
-            
-            {/* НОВАЯ РАДИОКНОПКА + БЛОК */}
-            <div className="form-group" style={{marginTop: '15px'}}>
-                <label className="form-label">Зафиксировано прогрессирование после отмены?</label>
-                <div className="radio-group" style={{display: 'flex', gap: '20px', marginTop: '5px'}}>
-                    <label className="radio-label" style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
-                        <input type="radio" name="has_after_alectinib_progression" value="true" checked={formData.has_after_alectinib_progression === true} onChange={handleChange} data-type="bool-radio" style={{marginRight: '8px'}}/>Да
-                    </label>
-                    <label className="radio-label" style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
-                        <input type="radio" name="has_after_alectinib_progression" value="false" checked={formData.has_after_alectinib_progression === false} onChange={handleChange} data-type="bool-radio" style={{marginRight: '8px'}}/>Нет
-                    </label>
+      case 'diagnosis-alk': 
+        if (!isALK) return null; 
+        return (
+          <>
+            <div className="card">
+              <h3>Диагноз</h3>
+              <div className="grid grid-2">
+                <DateValidation name="initial_diagnosis_date" label="Дата первоначального диагноза" value={formData.initial_diagnosis_date} onChange={handleChange} tooltip={DATE_TOOLTIP} required />
+                <TNMSelect name="tnm_stage" label="Стадия TNM (8-я классификация)" value={formData.tnm_stage} onChange={handleChange} options={dictionaries.tnm_stage} required />
+                <div className="form-group">
+                  <label className="form-label">Дата установки метастатического заболевания <span className="form-help">(заполнять только если отличается)</span></label>
+                  <DateValidation name="metastatic_disease_date" label="" value={formData.metastatic_disease_date} onChange={handleChange} tooltip={DATE_TOOLTIP} />
                 </div>
+                {renderSelect('histology', 'histology', 'Гистология', true)}
+                {formData.histology === 'OTHER' && (
+                  <div className="form-group"><label className="form-label">Укажите другую гистологию</label><input type="text" name="histology_other" value={formData.histology_other} onChange={handleChange} className="form-input" /></div>
+                )}
+              </div>
+            </div>
+            <div className="card">
+              <h3>ALK диагностика</h3>
+              <div className="grid grid-2">
+                <DateValidation name="alk_diagnosis_date" label="Дата диагностики ALK транслокации" value={formData.alk_diagnosis_date} onChange={handleChange} validationRules={dateValidationRules.alk_diagnosis_date} otherDates={formData} tooltip={DATE_TOOLTIP} required />
+                {renderSelect('alk_fusion_variant', 'alk_fusion_variant', 'Вариант ALK-фузии', true)}
+                {renderSelect('tp53_comutation', 'yes_no_unknown', 'Ко-мутация TP53', true)}
+                {renderSelect('ttf1_expression', 'yes_no_unknown', 'Экспрессия TTF-1', true)}
+              </div>
+              {renderMultiSelect('alk_methods', 'alk_methods', 'Метод диагностики', true)}
+            </div>
+          </>
+        )
+      
+      case 'previous-therapy': 
+        return (
+          <div className="card">
+            <h3>Предыдущая системная терапия</h3>
+            
+            <div className="form-group">
+              <label className="form-label" style={{marginBottom: '10px'}}>Статус предыдущей терапии</label>
+              <div style={{ display: 'flex', gap: '20px', marginBottom: '20px' }}>
+                <label className="radio-label" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <input 
+                    type="radio" 
+                    name="previous_therapy_status" 
+                    checked={formData.no_previous_therapy === true} 
+                    onChange={() => setFormData(prev => ({ 
+                      ...prev, 
+                      no_previous_therapy: true, 
+                      had_previous_therapy: false,
+                      previous_therapy_types: [],
+                      previous_therapy_start_date: null,
+                      previous_therapy_end_date: null,
+                      previous_therapy_response: '',
+                      previous_therapy_stop_reason: ''
+                    }))} 
+                    style={{ marginRight: '8px', width: '18px', height: '18px' }}
+                  />
+                  <span>Не было предыдущей терапии</span>
+                </label>
+                
+                <label className="radio-label" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <input 
+                    type="radio" 
+                    name="previous_therapy_status" 
+                    checked={formData.had_previous_therapy === true} 
+                    onChange={() => setFormData(prev => ({ 
+                      ...prev, 
+                      no_previous_therapy: false, 
+                      had_previous_therapy: true 
+                    }))} 
+                    style={{ marginRight: '8px', width: '18px', height: '18px' }}
+                  />
+                  <span>Была предыдущая терапия</span>
+                </label>
+              </div>
             </div>
 
-            {formData.has_after_alectinib_progression === true && (
-                <div className="subsection">
-                    <h4>Параметры прогрессирования</h4>
-                    <div className="grid grid-2">
-                        <DateValidation name="after_alectinib_progression_date" label="Дата прогрессирования" value={formData.after_alectinib_progression_date} onChange={handleChange} validationRules={dateValidationRules.after_alectinib_progression_date} otherDates={formData} />
-                        {renderSelect('after_alectinib_progression_type', 'progression_type', 'Тип прогрессирования')}
-                    </div>
-                    {renderMultiSelect('after_alectinib_progression_sites', 'progression_sites', 'Локализация')}
-                    {formData.after_alectinib_progression_sites?.includes('OTHER') && (
-                        <div className="form-group"><input type="text" name="after_alectinib_progression_sites_other_text" value={formData.after_alectinib_progression_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>
-                    )}
+            {formData.had_previous_therapy && (
+              <div className="animation-fade-in">
+                <div className="form-group">
+                  <label className="form-label">Тип лечения <span className="required">*</span></label>
+                  <select 
+                    value={formData.previous_therapy_types?.[0] || ''} 
+                    onChange={(e) => setFormData(p => ({ ...p, previous_therapy_types: [e.target.value] }))} 
+                    className="form-select"
+                    required
+                  >
+                    <option value="">Выберите...</option>
+                    {(dictionaries.previous_therapy_types || []).map(opt => (
+                      <option key={opt.code} value={opt.code}>{opt.value_ru}</option>
+                    ))}
+                  </select>
                 </div>
+                {formData.previous_therapy_types?.includes('OTHER') && (
+                  <div className="form-group"><label className="form-label">О чем речь?</label><input type="text" name="previous_therapy_types_other" value={formData.previous_therapy_types_other} onChange={handleChange} className="form-input" /></div>
+                )}
+                
+                <div className="grid grid-2">
+                  <DateValidation name="previous_therapy_start_date" label="Дата начала" value={formData.previous_therapy_start_date} onChange={handleChange} required />
+                  <DateValidation name="previous_therapy_end_date" label="Дата окончания" value={formData.previous_therapy_end_date} onChange={handleChange} validationRules={dateValidationRules.previous_therapy_end_date} otherDates={formData} required />
+                  {renderSelect('previous_therapy_response', 'response', 'Максимальный эффект', true)}
+                  {renderSelect('previous_therapy_stop_reason', 'previous_therapy_stop_reason', 'Причина прекращения', true)}
+                </div>
+                {formData.previous_therapy_stop_reason === 'OTHER' && (
+                  <div className="form-group"><label className="form-label">Укажите причину</label><input type="text" name="previous_therapy_stop_reason_other" value={formData.previous_therapy_stop_reason_other} onChange={handleChange} className="form-input" /></div>
+                )}
+              </div>
             )}
+          </div>
+        )
 
-            <div className="form-group" style={{marginTop: 20}}><label className="checkbox-label"><input type="checkbox" name="had_treatment_interruption" checked={formData.had_treatment_interruption} onChange={handleChange}/><span>Перерывы в лечении</span></label></div>
-            {formData.had_treatment_interruption && <div className="grid grid-2">{renderSelect('interruption_reason', 'interruption_reason', 'Причина перерыва')}<div className="form-group"><label className="form-label">Длительность (мес)</label><input type="number" name="interruption_duration_months" value={formData.interruption_duration_months} onChange={handleChange} className="form-input" step="0.1"/></div></div>}
-            <div className="form-group"><label className="checkbox-label"><input type="checkbox" name="had_dose_reduction" checked={formData.had_dose_reduction} onChange={handleChange}/><span>Редукция дозы</span></label></div>
-        </div>
-      )}
-      </>
-      case 'next-line': if (formData.alectinib_therapy_status !== 'stopped') return <div className="card"><h3>Следующая линия</h3><p>Доступно после отмены терапии.</p></div>; return <div className="card"><h3>Следующая линия</h3>{renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение')}{formData.next_line_treatments?.includes('OTHER') && <div className="form-group"><input type="text" name="next_line_treatments_other_text" value={formData.next_line_treatments_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}<div className="grid grid-2"><DateValidation name="next_line_start_date" label="Начало" value={formData.next_line_start_date} onChange={handleChange} /><DateValidation name="next_line_end_date" label="Конец" value={formData.next_line_end_date} onChange={handleChange} /><div className="form-group"><label className="checkbox-label"><input type="checkbox" name="progression_on_next_line" checked={formData.progression_on_next_line} onChange={handleChange}/><span>Прогрессирование</span></label></div></div>{formData.progression_on_next_line && <><div className="grid grid-2"><DateValidation name="progression_on_next_line_date" label="Дата прогрессирования" value={formData.progression_on_next_line_date} onChange={handleChange} />{renderSelect('next_line_progression_type', 'progression_type', 'Тип')}</div>{renderMultiSelect('next_line_progression_sites', 'progression_sites', 'Локализация')}{formData.next_line_progression_sites?.includes('OTHER') && <div className="form-group"><input type="text" name="next_line_progression_sites_other_text" value={formData.next_line_progression_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}</>}<div className="form-group"><label className="form-label">Всего линий после алектиниба</label><input type="number" name="total_lines_after_alectinib" value={formData.total_lines_after_alectinib} onChange={handleChange} className="form-input"/></div></div>
+      case 'alectinib-complete': 
+        return (
+          <>
+            <div className="card">
+              <h3>Лечение алектинибом</h3>
+              <div className="grid grid-2">
+                {renderSelect('alectinib_therapy_status', 'alectinib_therapy_status', 'Статус терапии алектинибом', true)}
+                <DateValidation name="alectinib_start_date" label="Дата начала лечения" value={formData.alectinib_start_date} onChange={handleChange} validationRules={dateValidationRules.alectinib_start_date} otherDates={formData} tooltip={DATE_TOOLTIP} required />
+                {renderSelect('stage_at_alectinib_start', 'stage_at_alectinib_start', 'Стадия на момент начала', true)}
+                <div className="form-group"><label className="form-label">ECOG статус (0-4) на момент начала <span className="required">*</span></label><input type="number" name="ecog_at_start" value={formData.ecog_at_start} onChange={handleChange} className="form-input" min="0" max="4" required/></div>
+              </div>
+              {renderMultiSelect('metastases_sites', 'metastases_sites', 'Местастазы на момент начала', true)}
+              {formData.metastases_sites?.includes('OTHER') && <div className="form-group"><input type="text" name="metastases_sites_other_text" value={formData.metastases_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}
+              <div className="form-group"><label className="checkbox-label"><input type="checkbox" name="cns_metastases" checked={formData.cns_metastases} onChange={handleChange}/><span>Метастазы в ЦНС</span></label></div>
+              {formData.cns_metastases && (
+                <div className="grid grid-3">
+                  {renderSelect('cns_measurable', 'cns_measurable', 'Измеряемость')}
+                  {renderSelect('cns_symptomatic', 'cns_symptomatic', 'Симптоматичность')}
+                  {renderSelect('cns_radiotherapy', 'cns_radiotherapy', 'Радиотерапия')}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <h3>Максимальный ответ на терапию алектинибом</h3>
+              <div className="grid grid-2">
+                {renderSelect('maximum_response', 'response', 'Максимальный ответ', true)}
+                <DateValidation name="earliest_response_date" label="Дата достижения наибольшего ответа" value={formData.earliest_response_date} onChange={handleChange} tooltip={DATE_TOOLTIP} />
+                {formData.cns_metastases && renderSelect('intracranial_response', 'response', 'Интракраниальный ответ')}
+              </div>
+            </div>
+
+            <div className="card">
+              <h3>Прогрессирование на терапии алектинибом</h3>
+              <div className="grid grid-2">
+                {renderSelect('progression_during_alectinib', 'progression_type', 'Прогрессирование во время лечения', true)}
+                {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' && (
+                  <>
+                    {renderSelect('local_treatment_at_progression', 'local_treatment_at_progression', 'Локальное лечение при прогрессировании')}
+                    <DateValidation name="progression_date" label="Дата прогрессирования" value={formData.progression_date} onChange={handleChange} validationRules={dateValidationRules.progression_date} otherDates={formData} tooltip={DATE_TOOLTIP} />
+                    
+                    {/* CHANGED TO RADIO */}
+                    <div className="form-group">
+                      <label className="form-label">Была ли продолжена терапия алектинибом после прогрессирования?</label>
+                      <div className="radio-group" style={{display: 'flex', gap: '20px'}}>
+                        <label className="radio-label" style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
+                          <input type="radio" name="continued_after_progression" value="true" checked={formData.continued_after_progression === true} onChange={handleChange} data-type="bool-radio" style={{marginRight: '8px'}}/>Да
+                        </label>
+                        <label className="radio-label" style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
+                          <input type="radio" name="continued_after_progression" value="false" checked={formData.continued_after_progression === false} onChange={handleChange} data-type="bool-radio" style={{marginRight: '8px'}}/>Нет
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              {formData.progression_during_alectinib && formData.progression_during_alectinib !== 'NONE' && (
+                <>
+                  {renderMultiSelect('progression_sites', 'progression_sites', 'Место прогрессирования')}
+                  {formData.progression_sites?.includes('OTHER') && (
+                    <div className="form-group">
+                      <label className="form-label">Другое место прогрессирования (уточните)</label>
+                      <input type="text" name="progression_sites_other_text" value={formData.progression_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Окончание лечения - ПОКАЗЫВАТЬ ТОЛЬКО ЕСЛИ СТАТУС STOPPED */}
+            {formData.alectinib_therapy_status === 'STOPPED' && (
+              <div className="card">
+                  <h3>Окончание лечения алектинибом</h3>
+                  <div className="grid grid-2">
+                      <DateValidation name="alectinib_end_date" label="Дата окончания" value={formData.alectinib_end_date} onChange={handleChange} validationRules={dateValidationRules.alectinib_end_date} otherDates={formData} tooltip={DATE_TOOLTIP} />
+                      {renderSelect('alectinib_stop_reason', 'alectinib_stop_reason', 'Причина окончания')}
+                  </div>
+                  
+                  {formData.alectinib_stop_reason === 'OTHER' && (
+                    <div className="form-group">
+                      <label className="form-label">Другая причина окончания терапии алектинибом</label>
+                      <input 
+                        type="text" 
+                        name="alectinib_stop_reason_other" 
+                        value={formData.alectinib_stop_reason_other} 
+                        onChange={handleChange} 
+                        className="form-input" 
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Радиокнопка прогрессирования после отмены */}
+                  <div className="form-group" style={{marginTop: '15px'}}>
+                      <label className="form-label">Зафиксировано прогрессирование после отмены?</label>
+                      <div className="radio-group" style={{display: 'flex', gap: '20px', marginTop: '5px'}}>
+                          <label className="radio-label" style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
+                              <input type="radio" name="has_after_alectinib_progression" value="true" checked={formData.has_after_alectinib_progression === true} onChange={handleChange} data-type="bool-radio" style={{marginRight: '8px'}}/>Да
+                          </label>
+                          <label className="radio-label" style={{display: 'flex', alignItems: 'center', cursor: 'pointer'}}>
+                              <input type="radio" name="has_after_alectinib_progression" value="false" checked={formData.has_after_alectinib_progression === false} onChange={handleChange} data-type="bool-radio" style={{marginRight: '8px'}}/>Нет
+                          </label>
+                      </div>
+                  </div>
+
+                  {formData.has_after_alectinib_progression === true && (
+                      <div className="subsection">
+                          <h4>Параметры прогрессирования</h4>
+                          <div className="grid grid-2">
+                              <DateValidation name="after_alectinib_progression_date" label="Дата прогрессирования" value={formData.after_alectinib_progression_date} onChange={handleChange} validationRules={dateValidationRules.after_alectinib_progression_date} otherDates={formData} tooltip={DATE_TOOLTIP} />
+                              {renderSelect('after_alectinib_progression_type', 'progression_type', 'Тип прогрессирования')}
+                          </div>
+                          {renderMultiSelect('after_alectinib_progression_sites', 'progression_sites', 'Локализация')}
+                          {formData.after_alectinib_progression_sites?.includes('OTHER') && (
+                              <div className="form-group"><input type="text" name="after_alectinib_progression_sites_other_text" value={formData.after_alectinib_progression_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>
+                          )}
+                      </div>
+                  )}
+
+                  <div className="form-group" style={{marginTop: 20}}>
+                    <label className="checkbox-label">
+                      <input type="checkbox" name="had_treatment_interruption" checked={formData.had_treatment_interruption} onChange={handleChange}/>
+                      <span>Было прерывание лечения</span>
+                    </label>
+                  </div>
+                  {formData.had_treatment_interruption && (
+                    <div className="grid grid-2">
+                      {renderSelect('interruption_reason', 'interruption_reason', 'Причина прерывания')}
+                      <div className="form-group">
+                        <label className="form-label">Длительность прерывания (месяцев)</label>
+                        <input type="number" name="interruption_duration_months" value={formData.interruption_duration_months} onChange={handleChange} className="form-input" step="0.1"/>
+                      </div>
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label className="checkbox-label">
+                      <input type="checkbox" name="had_dose_reduction" checked={formData.had_dose_reduction} onChange={handleChange}/>
+                      <span>Снижение дозы из-за НЯ</span>
+                    </label>
+                  </div>
+              </div>
+            )}
+          </>
+        )
+
+      case 'next-line': 
+        if (formData.alectinib_therapy_status !== 'STOPPED') return <div className="card"><h3>Следующая линия терапии</h3><p>Доступно только при статусе терапии "Прекращена"</p></div>; 
+        return (
+          <div className="card">
+            <h3>Следующая линия терапии</h3>
+            {renderMultiSelect('next_line_treatments', 'next_line_treatments', 'Лечение после отмены алектиниба')}
+            {formData.next_line_treatments?.includes('OTHER') && <div className="form-group"><input type="text" name="next_line_treatments_other_text" value={formData.next_line_treatments_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}
+            <div className="grid grid-2">
+              <DateValidation name="next_line_start_date" label="Дата начала следующей линии" value={formData.next_line_start_date} onChange={handleChange} validationRules={dateValidationRules.next_line_start_date} otherDates={formData} tooltip={DATE_TOOLTIP} />
+              <DateValidation name="next_line_end_date" label="Дата окончания" value={formData.next_line_end_date} onChange={handleChange} validationRules={dateValidationRules.next_line_end_date} otherDates={formData} tooltip={DATE_TOOLTIP} />
+              <div className="form-group"><label className="checkbox-label"><input type="checkbox" name="progression_on_next_line" checked={formData.progression_on_next_line} onChange={handleChange}/><span>Прогрессирование на следующей линии</span></label></div>
+            </div>
+            {formData.progression_on_next_line && (
+              <>
+                <div className="grid grid-2">
+                  <DateValidation name="progression_on_next_line_date" label="Дата прогрессирования" value={formData.progression_on_next_line_date} onChange={handleChange} tooltip={DATE_TOOLTIP} />
+                  {renderSelect('next_line_progression_type', 'progression_type', 'Тип прогрессирования')}
+                </div>
+                {renderMultiSelect('next_line_progression_sites', 'progression_sites', 'Место прогрессирования')}
+                {formData.next_line_progression_sites?.includes('OTHER') && <div className="form-group"><label className="form-label">Другое место прогрессирования (уточните)</label><input type="text" name="next_line_progression_sites_other_text" value={formData.next_line_progression_sites_other_text} onChange={handleChange} className="form-input" placeholder="Уточните"/></div>}
+              </>
+            )}
+            <div className="form-group"><label className="form-label">Всего линий после алектиниба</label><input type="number" name="total_lines_after_alectinib" value={formData.total_lines_after_alectinib} onChange={handleChange} className="form-input"/></div>
+          </div>
+        )
 
       // === ROS1 ===
       case 'diagnosis-ros1': if (!isROS1) return null; return <div className="card"><h3>Диагноз ROS1</h3><div className="grid grid-2"><DateValidation name="initial_diagnosis_date" label="Дата диагноза" value={formData.initial_diagnosis_date} onChange={handleChange} /><TNMSelect name="tnm_stage" label="Стадия TNM" value={formData.tnm_stage} onChange={handleChange} options={dictionaries.tnm_stage} />{renderSelect('histology', 'histology', 'Гистология')}{renderSelect('ros1_fusion_variant', 'ros1_fusion_variant', 'Вариант')}{renderSelect('tp53_comutation', 'yes_no_unknown', 'TP53')}{renderSelect('ttf1_expression', 'yes_no_unknown', 'TTF1')}</div></div>
@@ -593,7 +895,6 @@ function PatientFormPageNew({ user }) {
                  <div className="subsection">
                      <h4>Периоперационная терапия</h4>
                      {(formData.radical_perioperative_therapy || []).map((t, i) => {
-                         // ВАЛИДАЦИЯ ДАТ ВНУТРИ ЛИНИЙ
                          const start = t.start_date;
                          const end = t.end_date;
                          const dateError = start && end && new Date(start) > new Date(end) ? 'Дата окончания раньше начала' : null;
@@ -637,7 +938,57 @@ function PatientFormPageNew({ user }) {
                 formData={formData} 
             />
             <div className="form-content">
-                <div className="form-header"><h2>{isEdit ? 'Редактирование' : 'Новый пациент'} ({registryType})</h2><button className="btn btn-secondary" onClick={() => navigate('/patients')}>Закрыть</button></div>
+                <div className="form-header-container" style={{ background: 'white', padding: '20px', borderRadius: '8px', marginBottom: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                    <div className="header-top-row" style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: registryType === 'ALK' ? '20px' : '0' }}>
+                        <button className="btn btn-secondary" onClick={() => navigate('/patients')}>Закрыть</button>
+                        <h2 style={{ margin: 0, fontSize: '24px' }}>{isEdit ? 'Редактирование' : 'Новый пациент'} ({registryType})</h2>
+                    </div>
+                    
+                    {registryType === 'ALK' && (
+                        <div className="registry-info-block" style={{ fontSize: '14px', lineHeight: '1.5', color: '#374151', borderTop: '1px solid #e5e7eb', paddingTop: '15px', marginTop: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showCriteria ? '10px' : '0' }}>
+                                <span style={{ fontWeight: 500, color: '#6b7280' }}>Справочная информация</span>
+                                <button 
+                                    type="button" 
+                                    onClick={toggleCriteria}
+                                    style={{ 
+                                        background: 'none', 
+                                        border: 'none', 
+                                        color: '#2563eb', 
+                                        cursor: 'pointer', 
+                                        fontSize: '13px', 
+                                        padding: '0'
+                                    }}
+                                >
+                                    {showCriteria ? 'Скрыть критерии ▲' : 'Показать критерии включения ▼'}
+                                </button>
+                            </div>
+                            
+                            {showCriteria && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                                    <div>
+                                        <strong style={{ color: '#166534', display: 'block', marginBottom: '8px' }}>Критерии включения:</strong>
+                                        <ul style={{ margin: 0, paddingLeft: '20px', listStyleType: 'disc' }}>
+                                            <li>Гистологически подтвержденный немелкоклеточный рак легкого (НМРЛ)</li>
+                                            <li>Местнораспространенный (III стадия) после прогрессирования с отдаленными мтс или метастатический (IV стадия) рак легкого</li>
+                                            <li>Документально подтвержденная ALK-мутация</li>
+                                            <li>Алектиниб в качестве 1 линии таргетной терапии</li>
+                                            <li>Начало терапии алектинибом в период 2021-2022 гг.</li>
+                                        </ul>
+                                    </div>
+                                    <div>
+                                        <strong style={{ color: '#dc2626', display: 'block', marginBottom: '8px' }}>Критерии исключения:</strong>
+                                        <ul style={{ margin: 0, paddingLeft: '20px', listStyleType: 'disc' }}>
+                                            <li>Отсутствие верифицированной ALK-мутации</li>
+                                            <li>Предшествующая терапия другими ингибиторами ALK</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 <div className="patient-info-header">
                     <div className="info-item"><span className="info-label">Код</span><span className="info-value">{formData.patient_code || '-'}</span></div>
                     <div className="info-item"><span className="info-label">Статус</span><span className={`info-value status-${formData.current_status?.toLowerCase()}`}>{dictionaries.current_status?.find(s => s.code === formData.current_status)?.value_ru || formData.current_status || '-'}</span></div>

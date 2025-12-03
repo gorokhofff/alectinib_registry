@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from models import Base, User, Institution, Dictionary
 from database import engine
 import sys
+from datetime import datetime
 
 def init_database():
     print("Creating database tables...")
@@ -202,7 +203,7 @@ def init_database():
                     ("PLEURA", "Плевра", 4),
                     ("CNS", "ЦНС", 5),
                     ("OTHER", "Другое", 6),
-                    ("NONE", "Нет", 7),
+                    # "NONE" Removed
                 ]
             },
             {
@@ -235,7 +236,7 @@ def init_database():
                     ("PR", "ЧО (частичный ответ)", 2),
                     ("SD", "СЗ (стабилизация)", 3),
                     ("PD", "ПЗ (прогрессирование)", 4),
-                    ("NA", "НП (не применимо)", 5),
+                    # "NA" removed or renamed, usually "Unknown" is removed
                 ]
             },
             {
@@ -257,7 +258,6 @@ def init_database():
             {
                 "category": "alectinib_stop_reason",
                 "items": [
-                    # "PROGRESSION" убрано
                     ("INTOLERANCE", "Непереносимость", 2),
                     ("PATIENT_REFUSAL", "Отказ пациента", 3),
                     ("ADMINISTRATIVE", "Административные причины", 4),
@@ -321,6 +321,7 @@ def init_database():
             {
                 "category": "cns_radiotherapy",
                 "items": [
+                    # "DONE" renamed or logic changed in frontend, keeping basic here
                     ("DONE", "Радиотерапия метастазов в ЦНС проводилась", 1),
                     ("NOT_DONE", "Радиотерапия не проводилась", 2),
                 ]
@@ -332,7 +333,8 @@ def init_database():
                     ("PROGRESSION", "Прогрессирование", 2),
                     ("INTOLERANCE", "Непереносимость", 3),
                     ("COMPLETED", "Завершена по плану", 4),
-                    ("OTHER", "Другое", 5),
+                    ("PATIENT_REFUSAL", "Отказ пациента", 5), # NEW
+                    ("OTHER", "Другое", 6),
                 ]
             },
             {
@@ -452,7 +454,10 @@ def init_database():
                     db.add(dict_entry)
                     total_inserted += 1
                 else:
-                    if parent is not None and existing.parent != parent:
+                    # Update if exists
+                    existing.value_ru = value_ru
+                    existing.sort_order = sort_order
+                    if parent is not None:
                         existing.parent = parent
         
         db.commit()

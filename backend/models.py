@@ -81,6 +81,7 @@ class ClinicalRecord(Base):
     tnm_stage = Column(String(50))
     metastatic_disease_date = Column(DateTime)
     histology = Column(String(100))
+    histology_other = Column(Text)
     
     # ALK
     alk_diagnosis_date = Column(DateTime)
@@ -93,10 +94,12 @@ class ClinicalRecord(Base):
     had_previous_therapy = Column(Boolean)
     no_previous_therapy = Column(Boolean, default=False)
     previous_therapy_types = Column(JSON)
+    previous_therapy_types_other = Column(Text)
     previous_therapy_start_date = Column(DateTime)
     previous_therapy_end_date = Column(DateTime)
     previous_therapy_response = Column(String(20))
     previous_therapy_stop_reason = Column(Text)
+    previous_therapy_stop_reason_other = Column(Text)
     
     # Алектиниб
     alectinib_start_date = Column(DateTime)
@@ -108,7 +111,6 @@ class ClinicalRecord(Base):
     cns_measurable = Column(String(50))
     cns_symptomatic = Column(String(50))
     cns_radiotherapy = Column(String(100))
-    cns_radiotherapy_timing = Column(String(50))
     alectinib_therapy_status = Column(String(20))
     
     # Ответ
@@ -127,12 +129,13 @@ class ClinicalRecord(Base):
     # Завершение
     alectinib_end_date = Column(DateTime)
     alectinib_stop_reason = Column(Text)
+    alectinib_stop_reason_other = Column(Text) # NEW: Другая причина окончания терапии алектинибом
     had_treatment_interruption = Column(Boolean)
     interruption_reason = Column(Text)
     interruption_duration_months = Column(Float)
     had_dose_reduction = Column(Boolean)
     
-    # --- НОВЫЕ ПОЛЯ: Прогрессирование ПОСЛЕ отмены ---
+    # --- НОВЫЕ ПОЛЯ (AFTER ALECTINIB) ---
     after_alectinib_progression_type = Column(String(50))
     after_alectinib_progression_sites = Column(JSON)
     after_alectinib_progression_sites_other_text = Column(Text)

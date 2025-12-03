@@ -71,6 +71,7 @@ class ClinicalRecordBase(BaseModel):
     tnm_stage: Optional[str] = None
     metastatic_disease_date: Optional[datetime] = None
     histology: Optional[str] = None
+    histology_other: Optional[str] = None
     
     alk_diagnosis_date: Optional[datetime] = None
     alk_methods: Optional[List[str]] = None
@@ -81,10 +82,12 @@ class ClinicalRecordBase(BaseModel):
     had_previous_therapy: Optional[bool] = None
     no_previous_therapy: Optional[bool] = None
     previous_therapy_types: Optional[List[str]] = None
+    previous_therapy_types_other: Optional[str] = None
     previous_therapy_start_date: Optional[datetime] = None
     previous_therapy_end_date: Optional[datetime] = None
     previous_therapy_response: Optional[str] = None
     previous_therapy_stop_reason: Optional[str] = None
+    previous_therapy_stop_reason_other: Optional[str] = None
     
     alectinib_start_date: Optional[datetime] = None
     stage_at_alectinib_start: Optional[str] = None
@@ -95,7 +98,6 @@ class ClinicalRecordBase(BaseModel):
     cns_measurable: Optional[str] = None
     cns_symptomatic: Optional[str] = None
     cns_radiotherapy: Optional[str] = None
-    cns_radiotherapy_timing: Optional[str] = None
     alectinib_therapy_status: Optional[str] = None
     
     maximum_response: Optional[str] = None
@@ -111,6 +113,7 @@ class ClinicalRecordBase(BaseModel):
     
     alectinib_end_date: Optional[datetime] = None
     alectinib_stop_reason: Optional[str] = None
+    alectinib_stop_reason_other: Optional[str] = None # NEW
     had_treatment_interruption: Optional[bool] = None
     interruption_reason: Optional[str] = None
     interruption_duration_months: Optional[float] = None

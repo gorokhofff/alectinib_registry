@@ -13,6 +13,11 @@ function PatientsPage({ user }) {
   const [institutions, setInstitutions] = useState([])
   const [completionData, setCompletionData] = useState({})
   
+  // Export modal state
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportMode, setExportMode] = useState('standard')
+  const [isExporting, setIsExporting] = useState(false)
+  
   // Search and filter states
   const [searchFilters, setSearchFilters] = useState({
     patient_code: '',
@@ -141,7 +146,12 @@ function PatientsPage({ user }) {
     loadPatients(resetFilters)
   }
 
-  const handleExportExcel = async () => {
+  const handleExportClick = () => {
+    setShowExportModal(true)
+  }
+
+  const performExport = async () => {
+    setIsExporting(true)
     try {
       const params = new URLSearchParams()
       if (searchFilters.institution_id) {
@@ -151,6 +161,8 @@ function PatientsPage({ user }) {
       if (registryType) {
           params.append('registry_type', registryType)
       }
+      // Добавляем режим экспорта
+      params.append('mode', exportMode)
       
       const response = await fetch(`/api/export/patients?${params.toString()}`, {
         headers: {
@@ -163,16 +175,28 @@ function PatientsPage({ user }) {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `patients_export_${registryType}_${new Date().toISOString().slice(0,10)}.csv`
+        // Имя файла будет взято из заголовка ответа, если это возможно, или сгенерировано здесь
+        const contentDisposition = response.headers.get('Content-Disposition')
+        let filename = `patients_export_${registryType}_${new Date().toISOString().slice(0,10)}.csv`
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
+            if (filenameMatch && filenameMatch.length === 2)
+                filename = filenameMatch[1]
+        }
+        
+        a.download = filename
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
+        setShowExportModal(false) // Закрываем модальное окно после успеха
       } else {
         alert('Ошибка экспорта данных')
       }
     } catch (err) {
       alert('Ошибка экспорта данных')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -197,7 +221,7 @@ function PatientsPage({ user }) {
             🔄 Сменить регистр
           </button> */}
           {user.role === 'admin' && (
-            <button onClick={handleExportExcel} className="btn btn-info">
+            <button onClick={handleExportClick} className="btn btn-info">
               📊 Экспорт в Excel
             </button>
           )}
@@ -368,6 +392,79 @@ function PatientsPage({ user }) {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Export Options Modal */}
+      {showExportModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Параметры экспорта</h3>
+              <button 
+                className="close-btn" 
+                onClick={() => !isExporting && setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-body">
+              <p className="modal-description">Выберите тип отчета для выгрузки:</p>
+              
+              <div className="export-options">
+                <label className={`export-option ${exportMode === 'standard' ? 'selected' : ''}`}>
+                  <div className="radio-wrapper">
+                    <input 
+                      type="radio" 
+                      name="exportMode" 
+                      value="standard" 
+                      checked={exportMode === 'standard'}
+                      onChange={(e) => setExportMode(e.target.value)}
+                      disabled={isExporting}
+                    />
+                  </div>
+                  <div className="option-content">
+                    <span className="option-title">Стандартный отчет</span>
+                    <span className="option-desc">Краткая сводка основных клинических показателей (удобно для быстрого просмотра)</span>
+                  </div>
+                </label>
+                
+                <label className={`export-option ${exportMode === 'full' ? 'selected' : ''}`}>
+                  <div className="radio-wrapper">
+                    <input 
+                      type="radio" 
+                      name="exportMode" 
+                      value="full" 
+                      checked={exportMode === 'full'}
+                      onChange={(e) => setExportMode(e.target.value)}
+                      disabled={isExporting}
+                    />
+                  </div>
+                  <div className="option-content">
+                    <span className="option-title">Полная выгрузка БД</span>
+                    <span className="option-desc">Все поля базы данных, включая технические данные и JSON-структуры (для глубокого анализа)</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowExportModal(false)}
+                disabled={isExporting}
+              >
+                Отмена
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={performExport}
+                disabled={isExporting}
+              >
+                {isExporting ? 'Генерация файла...' : 'Скачать'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
