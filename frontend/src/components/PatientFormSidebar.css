@@ -37,7 +37,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   font-size: 14px;
-  border-left: 4px solid transparent; /* Увеличил для наглядности */
+  border-left: 4px solid transparent;
   position: relative;
 }
 
@@ -49,45 +49,55 @@
 .nav-item.active {
   background: #e3f2fd;
   color: #1976d2;
-  /* Цвет активной границы будет переопределяться статусом, если нужно, или дополнять его */
   font-weight: 500;
+}
+
+/* --- Цветовая индикация заполненности --- */
+
+.nav-item.completion-low {
+  border-left-color: #ef4444; /* Красный - мало заполнено */
+}
+
+.nav-item.completion-medium {
+  border-left-color: #eab308; /* Желтый - частично заполнено */
+}
+
+.nav-item.completion-high {
+  border-left-color: #22c55e; /* Зеленый - почти все заполнено */
+}
+
+/* Контейнер для иконки и текста */
+.nav-item-content {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  overflow: hidden;
 }
 
 .nav-icon {
   margin-right: 12px;
   font-size: 16px;
+  flex-shrink: 0;
 }
 
 .nav-label {
-  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Индикация заполненности */
-.completion-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* Бейджик с процентами */
+.completion-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 10px;
   margin-left: 8px;
 }
 
-/* Статусы заполнения (цветная полоса слева) */
-.nav-item.status-red {
-  border-left-color: #ef4444; /* Красный */
-}
-
-.nav-item.status-yellow {
-  border-left-color: #eab308; /* Желтый */
-}
-
-.nav-item.status-green {
-  border-left-color: #22c55e; /* Зеленый */
-}
-
-/* Группировка для ROS1 */
-.sidebar-nav-grouped {
-  padding: 10px 0;
-}
-
+/* Группировка (для старых структур, если используются) */
 .nav-group {
   margin-bottom: 8px;
 }
@@ -110,26 +120,13 @@
   letter-spacing: 0.5px;
 }
 
-.nav-group-header:hover {
-  background: #e5e5e5;
-}
-
-.nav-group-title {
-  flex: 1;
-}
-
 .nav-group-icon {
   font-size: 10px;
   transition: transform 0.2s ease;
-  color: #666;
 }
 
 .nav-group-icon.collapsed {
   transform: rotate(-90deg);
-}
-
-.nav-group-icon.expanded {
-  transform: rotate(0deg);
 }
 
 .nav-group-sections {

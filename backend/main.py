@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_
 from sqlalchemy.inspection import inspect
 from typing import List, Optional
@@ -71,150 +71,174 @@ def calculate_completion_percentage(clinical_record) -> CompletionResponse:
         if val is None: return False
         if isinstance(val, str) and not val.strip(): return False
         if isinstance(val, list) and len(val) == 0: return False
+        if isinstance(val, bool): return True # Bools are always filled if present
         return True
 
     reg_type = get_val('registry_type') or 'ALK'
-    expected_fields = []
+    
+    filled_count = 0
+    total_fields = 0
+
+    # Функция для добавления поля в подсчет
+    def check_field(field_name, custom_val=None):
+        nonlocal filled_count, total_fields
+        total_fields += 1
+        val = custom_val if custom_val is not None else get_val(field_name)
+        if is_filled(val):
+            filled_count += 1
 
     # --- 1. Common Fields (Always expected) ---
-    expected_fields.extend([
+    common_fields = [
         'patient_code', 'gender', 'birth_date', 'height', 'weight', 
         'smoking_status', 'initial_diagnosis_date', 'tnm_stage', 
         'histology', 'current_status', 'last_contact_date',
-        'comorbidities' # Expect array to be at least present/touched
-    ])
+        'comorbidities' 
+    ]
+    for f in common_fields: check_field(f)
     
     # Conditional: Comorbidities 'OTHER'
     comor = get_val('comorbidities')
     if comor and 'OTHER' in comor:
-        expected_fields.append('comorbidities_other_text')
+        check_field('comorbidities_other_text')
 
-    # --- 2. Previous Therapy ---
-    expected_fields.append('had_previous_therapy')
-    # If explicitly True, expect details
-    if get_val('had_previous_therapy') is True:
-        expected_fields.extend([
-            'previous_therapy_types', 
-            'previous_therapy_start_date', 
-            'previous_therapy_end_date', 
-            'previous_therapy_response', 
-            'previous_therapy_stop_reason'
-        ])
-
-    # --- 3. Registry Specific Logic ---
+    # --- 2. Registry Specific Logic ---
     if reg_type == 'ROS1':
-        # ROS1 Specifics
-        expected_fields.extend([
+        # --- ROS1 Specifics ---
+        ros1_base_fields = [
             'ros1_fusion_variant', 'pdl1_status', 
             'tp53_comutation', 'ttf1_expression',
-            'metastatic_diagnosis_date', 'metastatic_therapy_lines'
-        ])
+            'metastatic_diagnosis_date'
+        ]
+        for f in ros1_base_fields: check_field(f)
         
         # PD-L1 Conditional
         pdl1 = get_val('pdl1_status')
         if pdl1 in ['TPS_LESS_1', 'TPS_1_49', 'TPS_MORE_50']:
-            expected_fields.append('pdl1_tps')
+            check_field('pdl1_tps')
             
-        # Radical Treatment Section
-        expected_fields.append('radical_treatment_conducted')
-        if get_val('radical_treatment_conducted') is True:
-            # Surgery
-            expected_fields.append('radical_surgery_conducted')
-            if get_val('radical_surgery_conducted') is True:
-                expected_fields.extend(['radical_surgery_date', 'radical_surgery_type'])
-                if get_val('radical_surgery_type') == 'OTHER':
-                    expected_fields.append('radical_surgery_type_other')
+        # Radical Treatment Section (Tri-state logic: True/False/None)
+        if get_val('radical_treatment_conducted') is not None:
+            check_field('radical_treatment_conducted')
             
-            # CRT
-            expected_fields.append('radical_crt_conducted')
-            if get_val('radical_crt_conducted') is True:
-                expected_fields.extend(['radical_crt_start_date', 'radical_crt_end_date', 'radical_crt_consolidation'])
-                if get_val('radical_crt_consolidation') is True:
-                    expected_fields.extend(['radical_crt_consolidation_drug', 'radical_crt_consolidation_end_date'])
-            
-            # Perioperative & Outcome
-            expected_fields.extend(['radical_perioperative_therapy', 'radical_treatment_outcome'])
-            if get_val('radical_treatment_outcome') == 'RELAPSE':
-                expected_fields.append('relapse_date')
+            if get_val('radical_treatment_conducted') is True:
+                # --- Surgery ---
+                if get_val('radical_surgery_conducted') is not None:
+                    check_field('radical_surgery_conducted')
+                    if get_val('radical_surgery_conducted') is True:
+                        check_field('radical_surgery_date')
+                        check_field('radical_surgery_type')
+                        if get_val('radical_surgery_type') == 'OTHER':
+                            check_field('radical_surgery_type_other')
+                else:
+                    # Если еще не выбрано да/нет, поле все равно ожидается
+                    check_field('radical_surgery_conducted')
+
+                # --- CRT ---
+                if get_val('radical_crt_conducted') is not None:
+                    check_field('radical_crt_conducted')
+                    if get_val('radical_crt_conducted') is True:
+                        check_field('radical_crt_start_date')
+                        check_field('radical_crt_end_date')
+                        check_field('radical_crt_consolidation')
+                        if get_val('radical_crt_consolidation') is True:
+                            check_field('radical_crt_consolidation_drug')
+                            check_field('radical_crt_consolidation_end_date')
+                else:
+                    check_field('radical_crt_conducted')
+                
+                # --- Perioperative Therapy Lines (Granular count) ---
+                perio_lines = get_val('radical_perioperative_therapy')
+                if perio_lines and isinstance(perio_lines, list):
+                    for line in perio_lines:
+                        check_field('perio_line_type', line.get('type'))
+                        check_field('perio_line_start', line.get('start_date'))
+                        check_field('perio_line_end', line.get('end_date'))
+
+                # --- Outcome ---
+                check_field('radical_treatment_outcome')
+                if get_val('radical_treatment_outcome') == 'RELAPSE':
+                    check_field('relapse_date')
+
+        # --- Metastatic Therapy Lines (Granular count) ---
+        meta_lines = get_val('metastatic_therapy_lines')
+        if meta_lines and isinstance(meta_lines, list):
+            for line in meta_lines:
+                # Обязательные поля: start_date, ecog_status, response
+                check_field('meta_line_start', line.get('start_date'))
+                check_field('meta_line_ecog', line.get('ecog_status'))
+                check_field('meta_line_response', line.get('response'))
+                
+                if is_filled(line.get('progression_date')):
+                    check_field('meta_line_prog_type', line.get('progression_type'))
 
     else: 
-        # ALK Specifics
-        expected_fields.extend([
+        # --- ALK Specifics (Original Logic Preserved) ---
+        alk_fields = [
             'alk_diagnosis_date', 'alk_methods', 'alk_fusion_variant',
             'tp53_comutation', 'ttf1_expression', 'metastatic_disease_date',
             'alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start',
             'metastases_sites', 'cns_metastases', 'alectinib_therapy_status',
             'maximum_response', 'earliest_response_date', 
             'progression_during_alectinib'
-        ])
+        ]
+        for f in alk_fields: check_field(f)
         
+        # Previous Therapy
+        check_field('had_previous_therapy')
+        if get_val('had_previous_therapy') is True:
+            for f in ['previous_therapy_types', 'previous_therapy_start_date', 'previous_therapy_end_date', 'previous_therapy_response', 'previous_therapy_stop_reason']:
+                check_field(f)
+
         # Metastases Other
         mets = get_val('metastases_sites')
         if mets and 'OTHER' in mets:
-            expected_fields.append('metastases_sites_other_text')
+            check_field('metastases_sites_other_text')
             
         # CNS Details
         if get_val('cns_metastases') is True:
-            expected_fields.extend([
-                'cns_measurable', 'cns_symptomatic', 
-                'cns_radiotherapy', 'cns_radiotherapy_timing',
-                'intracranial_response'
-            ])
+            for f in ['cns_measurable', 'cns_symptomatic', 'cns_radiotherapy', 'cns_radiotherapy_timing', 'intracranial_response']:
+                check_field(f)
 
         # Progression during therapy
         prog_during = get_val('progression_during_alectinib')
         if is_filled(prog_during) and prog_during != 'NONE':
-            expected_fields.extend([
-                'local_treatment_at_progression', 'progression_date', 
-                'continued_after_progression', 'progression_sites'
-            ])
+            for f in ['local_treatment_at_progression', 'progression_date', 'continued_after_progression', 'progression_sites']:
+                check_field(f)
             prog_sites = get_val('progression_sites')
             if prog_sites and 'OTHER' in prog_sites:
-                expected_fields.append('progression_sites_other_text')
+                check_field('progression_sites_other_text')
 
         # Therapy Status: STOPPED
         status = get_val('alectinib_therapy_status')
-        # Check normalized value (case-insensitive)
         if status and status.lower() == 'stopped':
-            expected_fields.extend([
-                'alectinib_end_date', 'alectinib_stop_reason', 
-                'had_treatment_interruption', 'had_dose_reduction',
-                'next_line_treatments'
-            ])
+            for f in ['alectinib_end_date', 'alectinib_stop_reason', 'had_treatment_interruption', 'had_dose_reduction', 'next_line_treatments']:
+                check_field(f)
             
-            # Interruption details
             if get_val('had_treatment_interruption') is True:
-                expected_fields.extend(['interruption_reason', 'interruption_duration_months'])
+                check_field('interruption_reason')
+                check_field('interruption_duration_months')
             
-            # Next Line Details
             nl_treats = get_val('next_line_treatments')
-            # If treatments selected, expect details
             if is_filled(nl_treats):
                 if 'OTHER' in nl_treats:
-                    expected_fields.append('next_line_treatments_other_text')
+                    check_field('next_line_treatments_other_text')
                 
-                expected_fields.extend(['next_line_start_date', 'next_line_end_date', 'progression_on_next_line', 'total_lines_after_alectinib'])
+                for f in ['next_line_start_date', 'next_line_end_date', 'progression_on_next_line', 'total_lines_after_alectinib']:
+                    check_field(f)
                 
                 if get_val('progression_on_next_line') is True:
-                    expected_fields.extend(['progression_on_next_line_date', 'next_line_progression_type', 'next_line_progression_sites'])
+                    for f in ['progression_on_next_line_date', 'next_line_progression_type', 'next_line_progression_sites']:
+                        check_field(f)
                     nl_sites = get_val('next_line_progression_sites')
                     if nl_sites and 'OTHER' in nl_sites:
-                        expected_fields.append('next_line_progression_sites_other_text')
+                        check_field('next_line_progression_sites_other_text')
 
-            # After Alectinib Progression (Hidden fields)
-            # Only expect if data is present (implying "Yes" was chosen in UI)
             if is_filled(get_val('after_alectinib_progression_type')):
-                expected_fields.extend(['after_alectinib_progression_type', 'after_alectinib_progression_date', 'after_alectinib_progression_sites'])
+                for f in ['after_alectinib_progression_type', 'after_alectinib_progression_date', 'after_alectinib_progression_sites']:
+                    check_field(f)
                 if get_val('after_alectinib_progression_sites') and 'OTHER' in get_val('after_alectinib_progression_sites'):
-                    expected_fields.append('after_alectinib_progression_sites_other_text')
+                    check_field('after_alectinib_progression_sites_other_text')
 
-    # 4. Calculate Percentage
-    filled_count = 0
-    for field in expected_fields:
-        if is_filled(get_val(field)):
-            filled_count += 1
-            
-    total_fields = len(expected_fields)
     completion_percentage = round((filled_count / total_fields) * 100, 1) if total_fields > 0 else 0.0
     
     return CompletionResponse(
@@ -557,7 +581,8 @@ def list_patients(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    query = db.query(Patient).filter(Patient.is_active == True)
+    # Optimize query with joinedload for clinical_record
+    query = db.query(Patient).options(joinedload(Patient.clinical_record)).filter(Patient.is_active == True)
     
     if current_user.role != 'admin':
         query = query.filter(Patient.institution_id == current_user.institution_id)
@@ -597,7 +622,8 @@ def list_patients(
             "is_active": p.is_active,
             "created_at": p.created_at,
             "updated_at": p.updated_at,
-            "clinical_record": p.clinical_record
+            "clinical_record": p.clinical_record,
+            "completion_data": calculate_completion_percentage(p.clinical_record)
         }
         for p in patients
     ]
@@ -955,7 +981,7 @@ def delete_dictionary(
 
 @app.get("/api/analytics", response_model=List[AnalyticsResponse])
 def get_analytics(
-    registry_type: Optional[str] = None, # --- FIX: Добавлен параметр фильтрации
+    registry_type: Optional[str] = None, 
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin)
 ):
@@ -977,9 +1003,8 @@ def get_analytics(
             Patient.is_active == True
         )
 
-        # --- FIX: Фильтрация по типу регистра ---
+        # Фильтрация по типу регистра
         if registry_type:
-            # For patient count, we also need to join ClinicalRecord because registry_type is there
             patient_query = patient_query.join(ClinicalRecord).filter(ClinicalRecord.registry_type == registry_type)
             record_query = record_query.filter(ClinicalRecord.registry_type == registry_type)
         

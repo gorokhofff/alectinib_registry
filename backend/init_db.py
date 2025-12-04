@@ -89,13 +89,15 @@ def init_database():
                     ("UNKNOWN", "Неизвестно", 4),
                 ]
             },
-            # --- ЛОКАЛЬНОЕ ЛЕЧЕНИЕ ---
+            # --- ИНТРАКРАНИАЛЬНЫЙ ОТВЕТ (НОВЫЙ) ---
             {
-                "category": "local_treatment_at_progression",
+                "category": "intracranial_response",
                 "items": [
-                    ("RADIOTHERAPY", "Радиотерапия", 1),
-                    ("SURGERY", "Хирургия", 2),
-                    ("NONE", "Локальное лечение не проводилось", 3),
+                    ("CR", "ПО (полный ответ)", 1),
+                    ("PR", "ЧО (частичный ответ)", 2),
+                    ("SD", "СЗ (стабилизация)", 3),
+                    ("PD", "ПЗ (прогрессирование)", 4),
+                    ("UNKNOWN", "Неизвестно", 5),
                 ]
             },
             
@@ -236,7 +238,6 @@ def init_database():
                     ("PR", "ЧО (частичный ответ)", 2),
                     ("SD", "СЗ (стабилизация)", 3),
                     ("PD", "ПЗ (прогрессирование)", 4),
-                    # "NA" removed or renamed, usually "Unknown" is removed
                 ]
             },
             {
@@ -321,7 +322,6 @@ def init_database():
             {
                 "category": "cns_radiotherapy",
                 "items": [
-                    # "DONE" renamed or logic changed in frontend, keeping basic here
                     ("DONE", "Радиотерапия метастазов в ЦНС проводилась", 1),
                     ("NOT_DONE", "Радиотерапия не проводилась", 2),
                 ]
@@ -333,7 +333,7 @@ def init_database():
                     ("PROGRESSION", "Прогрессирование", 2),
                     ("INTOLERANCE", "Непереносимость", 3),
                     ("COMPLETED", "Завершена по плану", 4),
-                    ("PATIENT_REFUSAL", "Отказ пациента", 5), # NEW
+                    ("PATIENT_REFUSAL", "Отказ пациента", 5), 
                     ("OTHER", "Другое", 6),
                 ]
             },

@@ -11,7 +11,6 @@ function PatientsPage({ user }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [institutions, setInstitutions] = useState([])
-  const [completionData, setCompletionData] = useState({})
   
   // Export modal state
   const [showExportModal, setShowExportModal] = useState(false)
@@ -59,7 +58,6 @@ function PatientsPage({ user }) {
     try {
       setLoading(true)
       
-      // Используем текущий стейт фильтров, если аргумент пустой, но принудительно ставим registry_type
       const activeFilters = { 
           ...searchFilters, 
           ...filters, 
@@ -84,25 +82,6 @@ function PatientsPage({ user }) {
       if (response.ok) {
         const data = await response.json()
         setPatients(data)
-        
-        // Load completion data for each patient
-        const completions = {}
-        for (const patient of data) {
-          try {
-            const compResponse = await fetch(`/api/patients/${patient.id}/completion`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('token')}`
-              }
-            })
-            if (compResponse.ok) {
-              const compData = await compResponse.json()
-              completions[patient.id] = compData
-            }
-          } catch (err) {
-            console.error('Error loading completion data:', err)
-          }
-        }
-        setCompletionData(completions)
       } else {
         setError('Ошибка загрузки данных')
       }
@@ -157,11 +136,9 @@ function PatientsPage({ user }) {
       if (searchFilters.institution_id) {
         params.append('institution_id', searchFilters.institution_id)
       }
-      // Добавляем фильтр по регистру в экспорт
       if (registryType) {
           params.append('registry_type', registryType)
       }
-      // Добавляем режим экспорта
       params.append('mode', exportMode)
       
       const response = await fetch(`/api/export/patients?${params.toString()}`, {
@@ -175,7 +152,6 @@ function PatientsPage({ user }) {
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        // Имя файла будет взято из заголовка ответа, если это возможно, или сгенерировано здесь
         const contentDisposition = response.headers.get('Content-Disposition')
         let filename = `patients_export_${registryType}_${new Date().toISOString().slice(0,10)}.csv`
         if (contentDisposition) {
@@ -189,7 +165,7 @@ function PatientsPage({ user }) {
         a.click()
         document.body.removeChild(a)
         window.URL.revokeObjectURL(url)
-        setShowExportModal(false) // Закрываем модальное окно после успеха
+        setShowExportModal(false)
       } else {
         alert('Ошибка экспорта данных')
       }
@@ -208,18 +184,11 @@ function PatientsPage({ user }) {
     return <div className="alert alert-error">{error}</div>
   }
 
-  const handleChangeRegistry = () => {
-    navigate('/select-registry')
-  }
-
   return (
     <div className="patients-page">
       <div className="page-header">
         <h2>Список пациентов ({registryType})</h2>
         <div className="header-actions">
-          {/* <button onClick={handleChangeRegistry} className="btn btn-secondary">
-            🔄 Сменить регистр
-          </button> */}
           {user.role === 'admin' && (
             <button onClick={handleExportClick} className="btn btn-info">
               📊 Экспорт в Excel
@@ -301,7 +270,6 @@ function PatientsPage({ user }) {
                 <th>Пол</th>
                 <th>Дата рождения</th>
                 <th>Возраст</th>
-                {/* Скрываем колонку для ROS1 */}
                 {registryType === 'ALK' && <th>Дата начала алектиниба</th>}
                 <th>Статус</th>
                 <th>Дата заполнения</th>
@@ -313,7 +281,8 @@ function PatientsPage({ user }) {
             <tbody>
               {patients.map((patient) => {
                 const cr = patient.clinical_record || {}
-                const completion = completionData[patient.id]
+                const completion = patient.completion_data || { filled_fields: 0, total_fields: 0, completion_percentage: 0 }
+                
                 return (
                   <tr key={patient.id}>
                     <td>
@@ -327,7 +296,6 @@ function PatientsPage({ user }) {
                       }
                     </td>
                     <td>{cr.age_at_diagnosis || '—'}</td>
-                    {/* Скрываем ячейку для ROS1 */}
                     {registryType === 'ALK' && (
                         <td>
                         {cr.alectinib_start_date
@@ -357,7 +325,6 @@ function PatientsPage({ user }) {
                       }
                     </td>
                     <td>
-                      {completion ? (
                         <div className="completion-info">
                           <span className="completion-fraction">
                             {completion.filled_fields}/{completion.total_fields}
@@ -366,7 +333,6 @@ function PatientsPage({ user }) {
                             ({completion.completion_percentage.toFixed(1)}%)
                           </span>
                         </div>
-                      ) : '—'}
                     </td>
                     <td>{patient.institution_name}</td>
                     <td>
@@ -426,7 +392,7 @@ function PatientsPage({ user }) {
                   </div>
                   <div className="option-content">
                     <span className="option-title">Стандартный отчет</span>
-                    <span className="option-desc">Краткая сводка основных клинических показателей (удобно для быстрого просмотра)</span>
+                    <span className="option-desc">Краткая сводка основных клинических показателей</span>
                   </div>
                 </label>
                 
@@ -443,7 +409,7 @@ function PatientsPage({ user }) {
                   </div>
                   <div className="option-content">
                     <span className="option-title">Полная выгрузка БД</span>
-                    <span className="option-desc">Все поля базы данных, включая технические данные и JSON-структуры (для глубокого анализа)</span>
+                    <span className="option-desc">Все поля, включая JSON-структуры</span>
                   </div>
                 </label>
               </div>

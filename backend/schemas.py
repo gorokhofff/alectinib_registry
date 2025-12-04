@@ -11,6 +11,13 @@ class Role(str, Enum):
     ADMIN = "admin"
     USER = "user"
 
+# --- Moved Up for reference in PatientResponse ---
+class CompletionResponse(BaseModel):
+    filled_fields: int
+    total_fields: int
+    completion_percentage: float
+    class Config: from_attributes = True
+
 class UserLogin(BaseModel):
     username: str
     password: str
@@ -98,6 +105,7 @@ class ClinicalRecordBase(BaseModel):
     cns_measurable: Optional[str] = None
     cns_symptomatic: Optional[str] = None
     cns_radiotherapy: Optional[str] = None
+    cns_radiotherapy_timing: Optional[str] = None
     alectinib_therapy_status: Optional[str] = None
     
     maximum_response: Optional[str] = None
@@ -285,6 +293,7 @@ class PatientResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     clinical_record: Optional[ClinicalRecordResponse] = None
+    completion_data: Optional[CompletionResponse] = None
     class Config: from_attributes = True
 
 class DictionaryBase(BaseModel):
@@ -329,9 +338,3 @@ class PatientSearch(BaseModel):
     patient_code: Optional[str] = None
     birth_date: Optional[str] = None
     institution_id: Optional[int] = None
-    
-class CompletionResponse(BaseModel):
-    filled_fields: int
-    total_fields: int
-    completion_percentage: float
-    class Config: from_attributes = True

@@ -346,37 +346,6 @@ function PatientFormPageNew({ user }) {
     finally { setLoading(false) }
   }
 
-  const sectionFieldsMap = {
-    'current-status': ['current_status', 'last_contact_date'],
-    'patient-basic': ['patient_code', 'date_filled', 'gender', 'birth_date', 'height', 'weight'],
-    'diagnosis-alk': ['initial_diagnosis_date', 'tnm_stage', 'histology', 'alk_diagnosis_date', 'alk_fusion_variant'],
-    'previous-therapy': ['had_previous_therapy'], 
-    'alectinib-complete': ['alectinib_start_date', 'stage_at_alectinib_start', 'alectinib_therapy_status'],
-    'next-line': ['next_line_treatments'],
-    'diagnosis-ros1': ['initial_diagnosis_date', 'tnm_stage', 'ros1_fusion_variant'],
-    'pdl1-status': ['pdl1_status'],
-    'radical-treatment': ['radical_treatment_conducted'],
-    'metastatic-therapy': ['metastatic_diagnosis_date']
-  }
-
-  const calculateSectionStatus = (sectionId) => {
-    const fields = sectionFieldsMap[sectionId] || []
-    if (fields.length === 0) return ''
-    let filledCount = 0
-    fields.forEach(f => {
-        const val = formData[f]
-        if (Array.isArray(val) ? val.length > 0 : (val !== null && val !== '' && val !== undefined)) filledCount++
-    })
-    const percentage = (filledCount / fields.length) * 100
-    if (percentage < 50) return 'red'
-    if (percentage < 100) return 'yellow'
-    return 'green'
-  }
-
-  const enrichSections = (sectionsList) => {
-    return sectionsList.map(s => ({...s, status: calculateSectionStatus(s.id)}))
-  }
-
   // Обновленные названия разделов для ALK
   const alkSectionsRaw = [
     { id: 'current-status', title: 'Текущий статус', icon: '📊' },
@@ -387,14 +356,18 @@ function PatientFormPageNew({ user }) {
     { id: 'next-line', title: 'Следующая линия', icon: '➡️' }
   ]
 
-  const ros1StructureRaw = [
-    { groupTitle: 'Основная информация', sections: [{ id: 'current-status', title: 'Текущий статус', icon: '📊' }, { id: 'patient-basic', title: 'Базовые данные', icon: '👤' }] },
-    { groupTitle: 'Диагностика', sections: [{ id: 'diagnosis-ros1', title: 'Диагноз и ROS1', icon: '🔍' }, { id: 'pdl1-status', title: 'PD-L1 статус', icon: '🧬' }] },
-    { groupTitle: 'Радикальное лечение', sections: [{ id: 'radical-treatment', title: 'Радикальное лечение', icon: '⚕️' }] },
-    { groupTitle: 'Метастатическая фаза', sections: [{ id: 'metastatic-therapy', title: 'Линии терапии', icon: '💊' }] }
+  // Flattened ROS1 sections
+  const ros1SectionsRaw = [
+    { id: 'current-status', title: 'Текущий статус', icon: '📊' },
+    { id: 'patient-basic', title: 'Базовые данные', icon: '👤' },
+    { id: 'diagnosis-ros1', title: 'Диагностика и биомаркеры', icon: '🔍' },
+    { id: 'radical-treatment', title: 'Радикальное лечение', icon: '⚕️' },
+    { id: 'metastatic-therapy', title: 'Линии терапии', icon: '💊' }
   ]
 
-  const sections = registryType === 'ROS1' ? ros1StructureRaw.flatMap(g => g.sections) : alkSectionsRaw
+  // Note: Sidebar calculation logic is handled inside PatientFormSidebar component now for cleanliness,
+  // but we pass the structure here.
+  const sections = registryType === 'ROS1' ? ros1SectionsRaw : alkSectionsRaw
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -714,7 +687,8 @@ function PatientFormPageNew({ user }) {
               <div className="grid grid-2">
                 {renderSelect('maximum_response', 'response', 'Максимальный ответ', true)}
                 <DateValidation name="earliest_response_date" label="Дата достижения наибольшего ответа" value={formData.earliest_response_date} onChange={handleChange} tooltip={DATE_TOOLTIP} />
-                {formData.cns_metastases && renderSelect('intracranial_response', 'response', 'Интракраниальный ответ')}
+                {/* Changed dictionary to intracranial_response */}
+                {formData.cns_metastases && renderSelect('intracranial_response', 'intracranial_response', 'Интракраниальный ответ')}
               </div>
             </div>
 
@@ -727,7 +701,6 @@ function PatientFormPageNew({ user }) {
                     {renderSelect('local_treatment_at_progression', 'local_treatment_at_progression', 'Локальное лечение при прогрессировании')}
                     <DateValidation name="progression_date" label="Дата прогрессирования" value={formData.progression_date} onChange={handleChange} validationRules={dateValidationRules.progression_date} otherDates={formData} tooltip={DATE_TOOLTIP} />
                     
-                    {/* CHANGED TO RADIO */}
                     <div className="form-group">
                       <label className="form-label">Была ли продолжена терапия алектинибом после прогрессирования?</label>
                       <div className="radio-group" style={{display: 'flex', gap: '20px'}}>
@@ -755,7 +728,6 @@ function PatientFormPageNew({ user }) {
               )}
             </div>
 
-            {/* Окончание лечения - ПОКАЗЫВАТЬ ТОЛЬКО ЕСЛИ СТАТУС STOPPED */}
             {formData.alectinib_therapy_status === 'STOPPED' && (
               <div className="card">
                   <h3>Окончание лечения алектинибом</h3>
@@ -777,7 +749,6 @@ function PatientFormPageNew({ user }) {
                     </div>
                   )}
                   
-                  {/* Радиокнопка прогрессирования после отмены */}
                   <div className="form-group" style={{marginTop: '15px'}}>
                       <label className="form-label">Зафиксировано прогрессирование после отмены?</label>
                       <div className="radio-group" style={{display: 'flex', gap: '20px', marginTop: '5px'}}>
@@ -856,9 +827,31 @@ function PatientFormPageNew({ user }) {
           </div>
         )
 
-      // === ROS1 ===
-      case 'diagnosis-ros1': if (!isROS1) return null; return <div className="card"><h3>Диагноз ROS1</h3><div className="grid grid-2"><DateValidation name="initial_diagnosis_date" label="Дата диагноза" value={formData.initial_diagnosis_date} onChange={handleChange} /><TNMSelect name="tnm_stage" label="Стадия TNM" value={formData.tnm_stage} onChange={handleChange} options={dictionaries.tnm_stage} />{renderSelect('histology', 'histology', 'Гистология')}{renderSelect('ros1_fusion_variant', 'ros1_fusion_variant', 'Вариант')}{renderSelect('tp53_comutation', 'yes_no_unknown', 'TP53')}{renderSelect('ttf1_expression', 'yes_no_unknown', 'TTF1')}</div></div>
-      case 'pdl1-status': if (!isROS1) return null; return <div className="card"><h3>PD-L1</h3><div className="grid grid-2">{renderSelect('pdl1_status', 'pdl1_status', 'Статус')}{formData.pdl1_status && formData.pdl1_status !== 'UNKNOWN' && formData.pdl1_status !== 'NOT_DONE' && <div className="form-group"><label className="form-label">TPS (%)</label><input type="number" name="pdl1_tps" value={formData.pdl1_tps} onChange={handleChange} className="form-input"/></div>}</div></div>
+      // === ROS1 (Flattened & PD-L1 moved) ===
+      case 'diagnosis-ros1': 
+        if (!isROS1) return null; 
+        return (
+          <div className="card">
+            <h3>Диагноз и биомаркеры ROS1</h3>
+            <div className="grid grid-2">
+                <DateValidation name="initial_diagnosis_date" label="Дата диагноза" value={formData.initial_diagnosis_date} onChange={handleChange} />
+                <TNMSelect name="tnm_stage" label="Стадия TNM" value={formData.tnm_stage} onChange={handleChange} options={dictionaries.tnm_stage} />
+                {renderSelect('histology', 'histology', 'Гистология')}
+                {renderSelect('ros1_fusion_variant', 'ros1_fusion_variant', 'Вариант транслокации')}
+                {renderSelect('tp53_comutation', 'yes_no_unknown', 'TP53')}
+                {renderSelect('ttf1_expression', 'yes_no_unknown', 'TTF1')}
+                
+                {/* Flattened PD-L1 Block inserted here */}
+                {renderSelect('pdl1_status', 'pdl1_status', 'Статус экспрессии PD-L1')}
+                {formData.pdl1_status && formData.pdl1_status !== 'UNKNOWN' && formData.pdl1_status !== 'NOT_DONE' && (
+                    <div className="form-group">
+                        <label className="form-label">TPS (%)</label>
+                        <input type="number" name="pdl1_tps" value={formData.pdl1_tps} onChange={handleChange} className="form-input" min="0" max="100"/>
+                    </div>
+                )}
+            </div>
+          </div>
+        )
       
       case 'radical-treatment': if (!isROS1) return null; return (
         <div className="card">
@@ -933,8 +926,7 @@ function PatientFormPageNew({ user }) {
             <PatientFormSidebar 
                 currentSection={currentSection} 
                 onSectionChange={setCurrentSection} 
-                sections={registryType === 'ALK' ? enrichSections(alkSectionsRaw) : []} 
-                structure={registryType === 'ROS1' ? ros1StructureRaw.map(g => ({...g, sections: enrichSections(g.sections)})) : null} 
+                sections={sections} 
                 formData={formData} 
             />
             <div className="form-content">

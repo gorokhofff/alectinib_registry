@@ -9,6 +9,7 @@ function TherapyLinesTable({ value = [], onChange, disabled = false, dictionarie
     const newLine = {
       line_number: value.length + 1,
       therapy: null,
+      ecog_status: '', // NEW Field
       start_date: '',
       end_date: '',
       response: '',
@@ -113,19 +114,33 @@ function TherapyLinesTable({ value = [], onChange, disabled = false, dictionarie
 
                   <div className={styles.gridTwo}>
                     <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Статус ECOG (на момент начала)</label>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        max="4" 
+                        value={line.ecog_status || ''} 
+                        onChange={(e) => handleLineChange(index, 'ecog_status', e.target.value)} 
+                        disabled={disabled} 
+                        className={styles.formInput} 
+                        placeholder="0-4"
+                      />
+                    </div>
+                    <div className={styles.formGroup}>
                       <label className={styles.formLabel}>Эффект терапии</label>
                       <select value={line.response} onChange={(e) => handleLineChange(index, 'response', e.target.value)} disabled={disabled} className={styles.formSelect}>
                         <option value="">Выберите...</option>
                         {responseOptions.map(opt => <option key={opt.code} value={opt.code}>{opt.value_ru}</option>)}
                       </select>
                     </div>
-                    <div className={styles.formGroup}>
+                  </div>
+                  
+                  <div className={styles.formGroup}>
                       <label className={styles.formLabel}>Причина отмены</label>
                       <select value={line.stop_reason} onChange={(e) => handleLineChange(index, 'stop_reason', e.target.value)} disabled={disabled} className={styles.formSelect}>
                         <option value="">Выберите...</option>
                         {stopReasonOptions.map(opt => <option key={opt.code} value={opt.code}>{opt.value_ru}</option>)}
                       </select>
-                    </div>
                   </div>
 
                   {/* --- БЛОК ПРОГРЕССИРОВАНИЯ --- */}
