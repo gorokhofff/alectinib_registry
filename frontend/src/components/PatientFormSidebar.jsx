@@ -12,11 +12,10 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
     }
   }
 
-  // Определение полей для каждого раздела
-  const sectionFields = {
+  // Определение ОБЯЗАТЕЛЬНЫХ полей для каждого раздела (для логики цвета)
+  const requiredFields = {
     'current-status': [
       'current_status', 
-      'last_contact_date'
     ],
     'patient-basic': [
       'patient_code', 
@@ -25,7 +24,6 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
       'birth_date', 
       'height', 
       'weight', 
-      'comorbidities', 
       'smoking_status'
     ],
     'diagnosis-alk': [
@@ -38,10 +36,10 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
       'tp53_comutation', 
       'ttf1_expression'
     ],
-    'previous-therapy': [
-      'had_previous_therapy', 
-    ],
+    // previous-therapy logic is handled separately below
+    'previous-therapy': [], 
     'alectinib-complete': [
+      'alectinib_therapy_status',
       'alectinib_start_date', 
       'stage_at_alectinib_start', 
       'ecog_at_start', 
@@ -49,12 +47,9 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
       'maximum_response', 
       'progression_during_alectinib'
     ],
-    'next-line': [
-      'next_line_treatments', 
-      'next_line_start_date', 
-      'progression_on_next_line'
-    ],
-    // ROS1 Updated mapping
+    // next-line is conditional
+    'next-line': [],
+    // ROS1
     'diagnosis-ros1': [
         'initial_diagnosis_date', 
         'tnm_stage', 
@@ -62,28 +57,91 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
         'pdl1_status'
     ],
     'radical-treatment': [
-        'radical_treatment_conducted',
-        'radical_perioperative_therapy' // Array field
+        'radical_treatment_conducted'
     ],
-    'metastatic-therapy': [
-        'metastatic_diagnosis_date',
-        'metastatic_therapy_lines' // Array field
-    ]
+    // metastatic is complex
+    'metastatic-therapy': []
+  }
+
+  // Все поля для подсчета прогресса (более широкий список)
+  const allFields = {
+    'current-status': ['current_status', 'last_contact_date'],
+    'patient-basic': ['patient_code', 'date_filled', 'gender', 'birth_date', 'height', 'weight', 'comorbidities', 'smoking_status'],
+    'diagnosis-alk': ['initial_diagnosis_date', 'tnm_stage', 'histology', 'alk_diagnosis_date', 'alk_methods', 'alk_fusion_variant', 'tp53_comutation', 'ttf1_expression'],
+    'previous-therapy': ['had_previous_therapy'],
+    'alectinib-complete': ['alectinib_start_date', 'stage_at_alectinib_start', 'ecog_at_start', 'metastases_sites', 'maximum_response', 'progression_during_alectinib', 'cns_metastases'],
+    'next-line': ['next_line_treatments'],
+    'diagnosis-ros1': ['initial_diagnosis_date', 'tnm_stage', 'ros1_fusion_variant', 'pdl1_status'],
+    'radical-treatment': ['radical_treatment_conducted'],
+    'metastatic-therapy': ['metastatic_diagnosis_date', 'metastatic_therapy_lines']
   }
   
   // Функция для проверки заполненности поля
   const isFieldFilled = (value) => {
     if (value === null || value === undefined || value === '') return false
     if (Array.isArray(value)) return value.length > 0
-    if (typeof value === 'boolean') return true // булевы поля всегда считаем заполненными
+    if (typeof value === 'boolean') return true // булевы поля всегда считаем заполненными, если они не null
     return true
   }
+
+  // Проверка выполнения всех обязательных условий раздела
+  const checkRequired = (sectionId) => {
+    if (!formData) return false;
+
+    // Special Logic: Previous Therapy
+    if (sectionId === 'previous-therapy') {
+      if (formData.no_previous_therapy === true) return true;
+      if (formData.had_previous_therapy === true) {
+        const subReqs = ['previous_therapy_types', 'previous_therapy_start_date', 'previous_therapy_end_date', 'previous_therapy_response', 'previous_therapy_stop_reason'];
+        return subReqs.every(f => isFieldFilled(formData[f]));
+      }
+      return false; // Neither yes nor no selected
+    }
+
+    // Special Logic: Radical Treatment (ROS1)
+    if (sectionId === 'radical-treatment') {
+      if (formData.radical_treatment_conducted === false) return true;
+      if (formData.radical_treatment_conducted === true) {
+         // If yes, need at least surgery OR crt OR perioperative lines
+         const hasSurgery = formData.radical_surgery_conducted === true && isFieldFilled(formData.radical_surgery_date);
+         const hasCRT = formData.radical_crt_conducted === true && isFieldFilled(formData.radical_crt_start_date);
+         const hasPerio = Array.isArray(formData.radical_perioperative_therapy) && formData.radical_perioperative_therapy.length > 0;
+         return hasSurgery || hasCRT || hasPerio;
+      }
+      return false;
+    }
+
+    // Special Logic: Metastatic Therapy (ROS1)
+    if (sectionId === 'metastatic-therapy') {
+       // Just check if lines exist if applicable? Assuming at least one line if metastatic?
+       // Let's keep it simple: just checked filled if in list
+       return true; 
+    }
+
+    // Special Logic: Next Line (ALK)
+    if (sectionId === 'next-line') {
+       if (formData.alectinib_therapy_status !== 'STOPPED') return true; // Not required if ongoing
+       // If stopped, check next line fields
+       if (isFieldFilled(formData.next_line_treatments)) {
+          // If treatment selected, need dates
+          return isFieldFilled(formData.next_line_start_date);
+       }
+       // It's acceptable to have stopped but not started next line yet? 
+       // Assuming purely filled fields for now.
+       return true;
+    }
+
+    const reqs = requiredFields[sectionId] || [];
+    if (reqs.length === 0) return true; // No strict requirements defined
+
+    return reqs.every(field => isFieldFilled(formData[field]));
+  }
   
-  // Расчет процента заполненности раздела
+  // Расчет процента заполненности (для бейджика)
   const calculateCompletion = (sectionId) => {
     if (!formData) return 0
     
-    // Специальная логика для previous therapy
+    // Специальная логика для процентов (как раньше)
     if (sectionId === 'previous-therapy') {
         if (formData.no_previous_therapy === true) return 100;
         if (formData.had_previous_therapy === true) {
@@ -94,12 +152,7 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
         return 0; 
     }
 
-    // Специальная логика для Radical Treatment (ROS1)
-    if (sectionId === 'radical-treatment') {
-        if (formData.radical_treatment_conducted === false) return 100; // Лечение не проводилось - раздел заполнен
-    }
-
-    const fields = sectionFields[sectionId] || []
+    const fields = allFields[sectionId] || []
     if (fields.length === 0) return 0
 
     const filledCount = fields.filter(field => isFieldFilled(formData[field])).length
@@ -107,16 +160,27 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
   }
   
   // Получение CSS класса для цветовой индикации
-  const getCompletionClass = (percentage) => {
-    if (percentage === 0) return ''
-    if (percentage > 90) return 'completion-high' // Green
-    if (percentage >= 50) return 'completion-medium' // Yellow
-    return 'completion-low' // Red
+  const getCompletionClass = (sectionId) => {
+    const percentage = calculateCompletion(sectionId);
+    
+    // 1. Если 0% -> Желтый (не начато / частично)
+    // Поправка: Пользователь просил "желтый, если не открывал ни разу".
+    // Технически 0% - это и есть "не заполнено".
+    if (percentage === 0) return 'completion-medium'; 
+
+    // 2. Проверяем обязательные поля
+    const isComplete = checkRequired(sectionId);
+
+    if (isComplete) {
+        return 'completion-high'; // Зеленый
+    } else {
+        return 'completion-low'; // Красный (есть данные, но не все обязательные)
+    }
   }
 
   const renderNavButton = (section, isGroupedItem = false) => {
     const completion = calculateCompletion(section.id)
-    const completionClass = getCompletionClass(completion)
+    const completionClass = getCompletionClass(section.id)
     
     return (
       <button
@@ -128,6 +192,7 @@ function PatientFormSidebar({ currentSection, onSectionChange, sections = [], st
             <span className="nav-icon">{section.icon}</span>
             <span className="nav-label">{section.title}</span>
         </div>
+        {/* {completion > 0 && <span className="completion-badge">{completion}%</span>} */}
       </button>
     )
   }

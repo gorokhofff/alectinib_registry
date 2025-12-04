@@ -16,9 +16,9 @@ function SelectRegistryPage() {
     <div className={styles.selectRegistryPage}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <h1 className={styles.title}>Выберите регистр</h1>
+          <h1 className={styles.title}>Система клинических регистров</h1>
           <p className={styles.subtitle}>
-            Выберите регистр для работы с данными пациентов
+            Пожалуйста, выберите соответствующую нозологию для начала работы
           </p>
         </header>
 
@@ -36,15 +36,7 @@ function SelectRegistryPage() {
             }}
           >
             <div className={styles.cardIcon}>
-              {/* Иконка легких/молекулы */}
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
                 <path d="M12.5 14.5 L12.5 21" />
                 <path d="M6.5 8.5 L12.5 14.5 L18.5 8.5" />
@@ -56,10 +48,10 @@ function SelectRegistryPage() {
             </div>
             <h2 className={styles.cardTitle}>Регистр ALK</h2>
             <p className={styles.cardDescription}>
-              {REGISTRY_DESCRIPTIONS.ALK}
+              Клинический регистр пациентов с ALK-позитивным немелкоклеточным раком легкого
             </p>
             <div className={styles.cardButton}>
-              Выбрать регистр
+              Перейти к регистру
             </div>
           </div>
 
@@ -76,15 +68,7 @@ function SelectRegistryPage() {
             }}
           >
             <div className={styles.cardIcon}>
-              {/* Иконка легких/молекулы */}
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
                 <path d="M12.5 14.5 L12.5 21" />
                 <path d="M6.5 8.5 L12.5 14.5 L18.5 8.5" />
@@ -96,16 +80,16 @@ function SelectRegistryPage() {
             </div>
             <h2 className={styles.cardTitle}>Регистр ROS1</h2>
             <p className={styles.cardDescription}>
-              {REGISTRY_DESCRIPTIONS.ROS1}
+              Клинический регистр пациентов с ROS1-позитивным немелкоклеточным раком легкого
             </p>
             <div className={styles.cardButton}>
-              Выбрать регистр
+              Перейти к регистру
             </div>
           </div>
         </div>
 
         <footer className={styles.footer}>
-          <p>После выбора регистра вы сможете работать с данными пациентов</p>
+          <p>Система сбора и анализа клинических данных</p>
         </footer>
       </div>
     </div>

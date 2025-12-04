@@ -31,8 +31,8 @@ function DateValidation({
       return true
     }
 
-  const currentDate = toDateOnly(dateValue)
-  let errorMessage = ''
+    const currentDate = toDateOnly(dateValue)
+    let errorMessage = ''
 
     for (const rule of validationRules) {
       const compareDateRaw = otherDates[rule.compareWith]
@@ -54,32 +54,6 @@ function DateValidation({
     setIsValid(!errorMessage)
     return !errorMessage
   }
-  // const validateDate = (dateValue) => {
-  //   if (!dateValue) {
-  //     setError('')
-  //     setIsValid(true)
-  //     return true
-  //   }
-
-  //   const currentDate = new Date(dateValue)
-  //   let errorMessage = ''
-
-  //   // Check validation rules
-  //   for (const rule of validationRules) {
-  //     const compareDate = otherDates[rule.compareWith]
-  //     if (compareDate) {
-  //       const compareDateTime = new Date(compareDate)
-        
-  //       if (rule.type === 'before' && currentDate >= compareDateTime) {
-  //         errorMessage = rule.message
-  //         break
-  //       }
-  //       if (rule.type === 'after' && currentDate <= compareDateTime) {
-  //         errorMessage = rule.message
-  //         break
-  //       }
-  //     }
-  //   }
 
   const handleChange = (e) => {
     const newValue = e.target.value
@@ -93,11 +67,6 @@ function DateValidation({
         <label className="form-label">
           {label}
           {required && <span className="required">*</span>}
-          {tooltip && (
-            <span className="date-tooltip" title={tooltip}>
-              ℹ️
-            </span>
-          )}
         </label>
       )}
       <input
@@ -107,11 +76,10 @@ function DateValidation({
         onChange={handleChange}
         className={`form-input ${!isValid ? 'error' : ''}`}
         required={required}
-        title={tooltip}
       />
-      {tooltip && !label && (
+      {tooltip && (
         <div className="date-hint">
-          <span className="hint-icon">ℹ️</span>
+          <span className="hint-icon">i</span>
           {tooltip}
         </div>
       )}

@@ -1,18 +1,15 @@
 import React, { useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useRegistry } from '../contexts/RegistryContext'
-// Убедитесь, что файл CSS существует по этому пути, или закомментируйте, если стили глобальные
 import './Layout.css'
 
 function Layout({ user, onLogout, children }) {
   const location = useLocation()
   const navigate = useNavigate()
-  // Получаем данные из контекста. Убедитесь, что RegistryContext предоставляет эти методы
   const { registryType, getRegistryColor, getRegistryName } = useRegistry()
 
   const isActive = (path) => location.pathname === path
 
-  // Динамически обновляем CSS переменную --primary-color
   useEffect(() => {
     if (registryType && getRegistryColor) {
       const primaryColor = getRegistryColor()
@@ -20,8 +17,7 @@ function Layout({ user, onLogout, children }) {
     }
   }, [registryType, getRegistryColor])
 
-  // Безопасное получение имени и цвета с фолбэком
-  const regName = getRegistryName ? getRegistryName() : 'Регистр'
+  const regName = getRegistryName ? getRegistryName() : 'Клинический Регистр'
   const regColor = getRegistryColor ? getRegistryColor() : '#2563eb'
 
   return (
@@ -38,14 +34,13 @@ function Layout({ user, onLogout, children }) {
                 >
                   {registryType}
                 </span>
-                {/* КНОПКА СМЕНЫ РЕГИСТРА В ШАПКЕ */}
                 <button 
                   onClick={() => navigate('/select-registry')} 
                   className="btn btn-secondary btn-sm"
                   style={{ marginLeft: '10px', fontSize: '12px', padding: '4px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
                   title="Сменить регистр"
                 >
-                  <span>🔄</span> Сменить регистр
+                  Сменить регистр
                 </button>
               </>
             )}

@@ -17,7 +17,7 @@ function LoginPage({ onLogin }) {
       const user = await authService.login(username, password)
       onLogin(user)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Ошибка входа')
+      setError(err.response?.data?.detail || 'Ошибка авторизации')
     } finally {
       setLoading(false)
     }
@@ -26,8 +26,8 @@ function LoginPage({ onLogin }) {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1 className="login-title">Регистр Алектиниб</h1>
-        <p className="login-subtitle">Регистр клинических случаев лечения алектинибом</p>
+        <h1 className="login-title">Федеральный регистр</h1>
+        <p className="login-subtitle">Система учета пациентов с ALK/ROS1 статусом</p>
         
         <form onSubmit={handleSubmit} className="login-form">
           {error && (
@@ -35,7 +35,7 @@ function LoginPage({ onLogin }) {
           )}
           
           <div className="form-group">
-            <label className="form-label">Логин</label>
+            <label className="form-label">Имя пользователя</label>
             <input
               type="text"
               className="form-input"
@@ -62,12 +62,12 @@ function LoginPage({ onLogin }) {
             className="btn btn-primary btn-block"
             disabled={loading}
           >
-            {loading ? 'Вход...' : 'Войти'}
+            {loading ? 'Вход в систему...' : 'Войти'}
           </button>
         </form>
         
         <div className="login-footer">
-          <p>Для входа используйте учетные данные,<br/>предоставленные администратором</p>
+          <p>Авторизация в системе</p>
         </div>
       </div>
     </div>
